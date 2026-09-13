@@ -1,0 +1,54 @@
+{
+  "name": "personal-finance-app",
+  "version": "0.1.0",
+  "description": "Personal Financial Management Mobile App",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "eject": "expo eject",
+    "test": "jest",
+    "lint": "eslint src/",
+    "build:android": "eas build --platform android",
+    "build:ios": "eas build --platform ios"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-native": "^0.73.0",
+    "expo": "^50.0.0",
+    "axios": "^1.6.0",
+    "react-native-gesture-handler": "^2.14.0",
+    "react-native-reanimated": "^3.5.0",
+    "@react-navigation/native": "^6.1.9",
+    "@react-navigation/bottom-tabs": "^6.5.11",
+    "@react-navigation/native-stack": "^6.9.17",
+    "react-native-screens": "^3.27.0",
+    "react-native-safe-area-context": "^4.8.2",
+    "@react-native-async-storage/async-storage": "^1.21.0",
+    "date-fns": "^2.30.0",
+    "uuid": "^9.0.1",
+    "zustand": "^4.4.1",
+    "react-native-chart-kit": "^6.12.0",
+    "react-native-svg": "^13.14.0",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^118.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-native": "^0.73.0",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
+    "@testing-library/react-native": "^12.4.2",
+    "eslint": "^8.55.0"
+  },
+  "keywords": [
+    "finance",
+    "personal-finance",
+    "assets",
+    "expenses",
+    "mobile",
+    "react-native"
+  ]
+}
