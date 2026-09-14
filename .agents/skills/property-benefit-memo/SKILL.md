@@ -1,19 +1,30 @@
 ---
 name: property-benefit-memo
-description: Draft, review, and reformat Thai government memoranda (บันทึกข้อความ, form ท.ก. ๖๒) for property/lease benefit management (งานจัดประโยชน์ทรัพย์สิน) work — lease renewals, rights transfers, direct-lease requests, construction/repair permits, and one-stop-service requests. Use when the user asks to write/draft a บันทึกข้อความ, ตรวจตัวสะกด, จัดรูปแบบเอกสารราชการ, or references any of the 21 transaction types in references/transaction-types.md. Also use to check spelling, phrasing, and layout against the standard 3-paragraph format before a memo is submitted.
+description: Draft, review, and reformat Thai government memoranda (บันทึกข้อความ, form ท.ก. ๖๒) and site-inspection reports for property/lease benefit management (งานจัดประโยชน์ทรัพย์สิน) work — lease renewals, rights transfers, direct-lease requests, construction/repair permits, one-stop-service requests, and the recurring 15-year long-term lease inspection cycle (ตรวจตรา, ลงพื้นที่, รายงานผลตรวจ, สรุปเสนอผู้บริหาร). Use when the user asks to write/draft a บันทึกข้อความ or รายงานผลตรวจสอบ, ตรวจตัวสะกด, จัดรูปแบบเอกสารราชการ, or references any of the 21 transaction types in references/transaction-types.md or the inspection workflow in references/inspection-workflow.md. Also use to check spelling, phrasing, and layout before a document is submitted.
 ---
 
 # property-benefit-memo
 
-ช่วยร่าง ตรวจสอบ และจัดรูปแบบ **บันทึกข้อความ** ราชการสำหรับงานจัดประโยชน์ทรัพย์สิน (ที่ดิน/อาคาร/สัญญาเช่า) ให้ตรงตามแบบฟอร์มมาตรฐาน **ท.ก. ๖๒** และภาษาราชการที่หน่วยงานใช้จริง
+ช่วยร่าง ตรวจสอบ และจัดรูปแบบเอกสารราชการสำหรับงานจัดประโยชน์ทรัพย์สิน (ที่ดิน/อาคาร/สัญญาเช่า) 2 กลุ่มหลัก:
 
-ปัญหาหลักที่ skill นี้แก้: **ตัวสะกดผิด** และ **รูปแบบผิด** ในบันทึกข้อความ — เอกสารประเภทอื่น (สัญญา, แบบฟอร์ม) มักมี pattern ตายตัวอยู่แล้วจึงมีปัญหาน้อยกว่า
+1. **บันทึกข้อความ** (ฟอร์ม ท.ก. ๖๒) — เสนอขออนุมัติธุรกรรม 21 ประเภท (ต่อสัญญา, โอนสิทธิ, ขออนุญาตต่าง ๆ)
+2. **เอกสารตรวจตรา/รายงานผล** — งานตรวจสอบสัญญาเช่ารายย่อยเชิงรุกที่สำนักงานฯ ริเริ่มเอง (ลงพื้นที่, บันทึกผล, สรุปเสนอผู้บริหาร) โดยเฉพาะวงจรตรวจสอบสัญญาระยะยาว 15 ปี
+
+ปัญหาหลักที่ skill นี้แก้: **ตัวสะกดผิด** และ **รูปแบบผิด** ในเอกสารทั้งสองกลุ่ม — สัญญา/แบบฟอร์มอื่นมักมี pattern ตายตัวอยู่แล้วจึงมีปัญหาน้อยกว่า
+
+**ขอบเขตที่ยังไม่ครอบคลุม:** การส่งจดหมาย/ประสานงานกับ**หน่วยงานราชการภายนอก** (กรมที่ดิน, เทศบาล ฯลฯ) เป็นคนละ flow ที่ยังไม่ได้เพิ่มเข้ามา — งานประสานงานที่ skill นี้รองรับตอนนี้คือระหว่างหน่วยงาน**ภายใน**สำนักงานฯ เท่านั้น (ดู `references/inspection-workflow.md`)
 
 ## กฎสำคัญที่สุด: ห้าม hardcode ข้อมูลอ่อนไหว
 
 **ห้ามใส่ตัวเลขค่าเช่า/ค่าธรรมเนียม/ราคาประเมิน, ชื่อบุคคลจริง, หรือกรณีตัวอย่างจริงลงใน skill นี้หรือในโค้ด** ทุกครั้งที่ร่างหรือแก้เอกสาร ให้ใช้ **placeholder** (เช่น `[อัตราค่าเช่า]`, `[ชื่อผู้เช่า]`, `[เลขที่สัญญา]`) แล้วให้ผู้ใช้กรอกตัวเลข/ชื่อจริงเอง ตัวเลขและเกณฑ์ที่แท้จริงอยู่ในระเบียบภายในของสำนักงานซึ่งเป็นความลับ — ห้ามเดาหรือจำจากเอกสารที่เคยเห็น
 
 ## ขั้นตอนการทำงาน
+
+0. **แยกก่อนว่าเป็นเอกสารกลุ่มไหน:**
+   - ผู้เช่า/ทายาทเป็นคนยื่นคำขอ (ต่อสัญญา, โอนสิทธิ, ขออนุญาตต่าง ๆ) → **กลุ่มบันทึกข้อความ** ไปข้อ 1
+   - สำนักงานฯ ริเริ่มตรวจสอบเอง (ลงพื้นที่, ครบรอบสัญญา 15 ปี, รายงานผล) → **กลุ่มตรวจตรา/รายงานผล** อ่าน `references/inspection-workflow.md` + `references/inspection-forms.md` แล้วใช้โครงสร้างฟอร์มในนั้นแทนฟอร์ม ท.ก. ๖๒ ด้านล่าง
+
+### กลุ่มบันทึกข้อความ (คำขอจากผู้เช่า)
 
 1. **ระบุประเภทธุรกรรม** — ถามผู้ใช้หรือดูจากบริบทว่าเป็นธุรกรรมประเภทไหนใน 21 ประเภท (`references/transaction-types.md`) เพราะกำหนด:
    - ต้องใช้ one-stop service (เสร็จวันเดียว) หรือ flow อนุมัติหลายชั้น
@@ -24,6 +35,13 @@ description: Draft, review, and reformat Thai government memoranda (บันท
    - **จัดรูปแบบ** → จัดให้ตรงผังฟอร์มด้านล่างโดยไม่เปลี่ยนเนื้อหา
 3. **ตรวจสอบคำศัพท์เฉพาะ** ที่ใช้ในบันทึกให้ตรงกับ `references/glossary.md` (เช่น อย่าสับสน "สัญญาเช่าประเภทที่ 1" กับ "ประเภทที่ 2")
 4. **ก่อนส่งงานให้ผู้ใช้** ไล่ checklist ท้าย SKILL.md อีกครั้งเสมอ
+
+### กลุ่มตรวจตรา/รายงานผล (สำนักงานฯ ริเริ่มเอง)
+
+1. **ระบุว่าอยู่ขั้นไหนของ flow** — เพิ่งลงพื้นที่ (ใช้ฟอร์มชั้น 1), กำลังสรุปเสนอผู้บริหาร (ใช้ฟอร์มชั้น 2), หรือกำลังแจ้ง/ติดตามผู้เช่าที่ไม่ปฏิบัติตาม (ใช้เส้นทาง escalation) — ดู `references/inspection-workflow.md`
+2. **เลือกโครงสร้างฟอร์มที่ตรงขั้น** จาก `references/inspection-forms.md` (checklist รายผู้เช่า / หนังสือสรุปกลุ่มสัญญา / รายงานภาพถ่ายภาคสนาม)
+3. **ใช้คำลงท้ายให้ถูกประเภท** — รายงานผลตรวจใช้ "จึงเรียนมาเพื่อโปรดทราบ" (ไม่ใช่ขออนุมัติ) เว้นแต่กำลังเสนอมาตรการ escalation ที่ต้องขอความเห็นชอบจริง
+4. **ตรวจสอบคำศัพท์เฉพาะ** เทียบกับ `references/glossary.md` เช่นเดียวกับกลุ่มบันทึกข้อความ
 
 ## โครงสร้างฟอร์ม ท.ก. ๖๒ (บันทึกข้อความ)
 
@@ -93,3 +111,5 @@ description: Draft, review, and reformat Thai government memoranda (บันท
 
 - `references/transaction-types.md` — 21 ประเภทธุรกรรม (9 one-stop + 12 เช่า/โอนสิทธิ) พร้อม flow และระดับอนุมัติ
 - `references/glossary.md` — คำศัพท์เฉพาะทางงานจัดประโยชน์ทรัพย์สิน
+- `references/inspection-workflow.md` — วงจรตรวจสอบสัญญาเช่าระยะยาว 15 ปี, หน่วยงานภายในที่เกี่ยวข้อง, เส้นทาง escalation
+- `references/inspection-forms.md` — โครงสร้างฟอร์มตรวจตรา 2 ชั้น (checklist รายผู้เช่า + หนังสือสรุปกลุ่มสัญญา) พร้อมตารางการเปลี่ยนแปลง↔การดำเนินการมาตรฐาน
