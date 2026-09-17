@@ -5,6 +5,30 @@
 Normalize มาจาก `edited.xlsx` (Google Drive) + ภาพหน้าจอแอป Dime โฟลเดอร์ `Gold`
 โดยไม่ copy ชีทเดิมมาต่อกัน และไม่ทำลายข้อมูลต้นฉบับ
 
+## ⚠️ If File Shows No Numbers
+
+When you first open `MY_WEALTH_v1.xlsx`, if the Dashboard appears empty (no numbers), this is **not** a file error. The workbook is correctly set up with 2,457 formulas and 18 Excel Tables, but Excel needs to recalculate them.
+
+**Quick Fix — Try These in Order:**
+
+1. **Force Recalculation:**
+   - **Excel (Windows/Mac):** Press `Ctrl + Shift + F9` (or `Cmd + Shift + F9`)
+   - **LibreOffice:** Press `Ctrl + Shift + F9` or Tools → Cell Contents → Recalculate Hard
+   - **Google Sheets:** Just open it — auto-calculates automatically
+
+2. **Enable Auto-Calculation:**
+   - **Excel:** File → Options → Formulas → ✓ Automatic
+   - **LibreOffice:** Tools → Options → LibreOffice Calc → Calculate → Always
+
+3. **If Still No Numbers:**
+   - Close and reopen the file
+   - Try disabling Excel add-ins
+   - Check file size (should be ~150-160 KB)
+
+**Verify the file is correct:** Run `python3 verify_and_recalc.py`
+
+**Detailed troubleshooting:** See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
 ## Data model — บันทึกครั้งเดียว คำนวณต่อทั้งระบบ
 
 ```
@@ -45,9 +69,23 @@ Normalize มาจาก `edited.xlsx` (Google Drive) + ภาพหน้า�
 
 17 รายการถูกบันทึกไว้ — **7 รายการยังเปิดอยู่** ไม่มีการเดาหรือแก้ตัวเลขอัตโนมัติ
 
-## Reproduce
+## Reproduce / Update
 
 ```bash
+# Install dependencies
 pip install openpyxl
-cd scripts && python3 prep.py && python3 build.py && python3 check.py
+
+# Regenerate from source (requires edited.xlsx in parent directory)
+cd scripts
+python3 prep.py     # Extract and normalize from edited.xlsx
+python3 build.py    # Generate workbook with 20 sheets, formulas, and calculation settings
+python3 check.py    # Validate 2,457 formulas and 18 tables
+
+# Verify the result
+cd .. && python3 verify_and_recalc.py
 ```
+
+**Build.py now includes:**
+- `calcMode = 'auto'` — Set automatic recalculation
+- `calcOnSave = True` — Recalculate before saving
+- `fullCalcOnLoad = True` — Full recalculation on file open

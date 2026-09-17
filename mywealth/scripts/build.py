@@ -1584,5 +1584,11 @@ wb.properties.description = ('Financial Data Center v1 — normalized from edite
                              'Single source of truth: 04_TRANSACTIONS / 07_INVESTMENT_TX / '
                              '09_PVD / 12_FX / 03_ACCOUNTS.')
 OUT = 'MY_WEALTH_v1.xlsx'
+
+# Set calculation properties to force Excel to recalculate on open
+wb.calculation.calcMode = 'auto'
+wb.calculation.calcOnSave = True
+wb.calculation.fullCalcOnLoad = True
+
 wb.save(OUT)
 print('SAVED', OUT)
