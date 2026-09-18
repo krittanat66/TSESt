@@ -1,0 +1,67 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+@layer base {
+  body {
+    @apply bg-bg-primary text-white font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-3 bg-cyan rounded-lg font-semibold text-bg-primary hover:bg-cyan/90 transition-colors;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 bg-bg-card border border-cyan/50 rounded-lg text-cyan font-semibold hover:bg-cyan/10 transition-colors;
+  }
+
+  .card {
+    @apply bg-bg-card rounded-lg p-4 border border-border-soft;
+  }
+
+  .card-elevated {
+    @apply bg-gradient-to-br from-bg-card to-bg-elevated rounded-lg p-4 border border-border-soft;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1C5265;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #248BFF;
+  }
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(34, 230, 224, 0.3);
+  color: #22E6E0;
+}
+
+/* Mobile optimization */
+@media (max-width: 640px) {
+  body {
+    font-size: 16px; /* Prevent zoom on input focus */
+  }
+}
