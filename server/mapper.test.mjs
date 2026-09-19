@@ -15,7 +15,8 @@ const raw = {
     ['Account ID','Account Name','Institution','Account Type','Currency','Purpose','Opening Balance','Opening Date','Current Balance','Reported Balance','Difference','Available Balance','Last Updated','Source','Data Status','Status'],
     ['ACC-SCB-01','SCB Salary Account','SCB','Bank','THB','เงินเดือนเข้า',40414.98,serial('2026-09-17'),40414.98,40414.98,0,40414.98,serial('2026-09-17'),'ผู้ใช้กรอกเอง','Reported','Active'],
     ['ACC-SCB-02','SCB Daily Living Account','SCB','Bank','THB','ใช้จ่ายรายวัน',123.17,serial('2026-09-17'),123.17,123.17,0,123.17,serial('2026-09-17'),'ผู้ใช้กรอกเอง','Reported','Active'],
-    ['ACC-DIME-02','Dime FCD USD','Dime','FCD','USD','ลงทุน',0,serial('2026-09-09'),753.49,'N/A','—',753.49,serial('2026-09-09'),'ผู้ใช้กรอกเอง','Missing','Active'],
+    ['ACC-DIME-02','Dime FCD USD','Dime','FCD','USD','ลงทุน',0,serial('2026-09-09'),753.4899999999998,'N/A','—',753.49,serial('2026-09-09'),'ผู้ใช้กรอกเอง','Missing','Active'],
+    ['✅ บัญชี SCB 3 บัญชี และ GSB 2 บัญชี กรอกยอดแล้ว — ที่มา: ผู้ใช้วางสรุปยอดไว้ที่ Sheet1'],
   ],
   investment: [
     ['Asset','Market','Currency','Quantity (Official)','Qty from TX','Qty Diff','Average Cost','Cost Basis','Current Price','Price Source','Current Value (Local)','FX Rate','Cost Basis (THB)','Current Value (THB)','Profit/Loss (THB)','Return %','Allocation %','As-of Date','Status'],
@@ -23,6 +24,9 @@ const raw = {
     ['AAPL','US','USD',1.181834,1.183002,-0.001168,236.46,279.46,330.5849,'Manual',390.70,33.1,9250.01,12932.05,3682.04,0.398,0.094,serial('2026-09-14'),'Active'],
     ['PTT','SET','THB',1000,1000,0,32,32000,36,'Manual',36000,1,32000,36000,4000,0.125,0.26,serial('2026-09-14'),'Active'],
     ['OLD','US','USD',0,0,0,0,0,0,'Manual',0,33.1,0,0,0,0,0,serial('2026-01-01'),'Closed'],
+    ['MTS-GOLD','Commodity','THB',2,2,0,50000,100000,52000,'Manual',104000,1,100000,104000,4000,0.04,0.2,serial('2026-09-14'),'Active'],
+    ['TOTAL','','',0,0,0,0,0,0,'',0,0,50274.16,167647.09,0,0,0,'',''],
+    ['⚠ SCB / GULF: ไฟล์เดิมมีแต่มูลค่ารวม ไม่มีจำนวนหุ้น จึงใส่ N/A ตามกฎข้อ 45'],
   ],
   dca: [
     ['Month','Asset','Target Amount','Actual Amount','Difference','Completion %','Status','Note'],
@@ -40,6 +44,7 @@ const raw = {
     ['Inbox ID','Received Date','Source','Input Type','Raw Data','AI/OCR Result','Transaction Type','Amount','Currency','Date','Account','Category','Asset','Quantity','Price','Confidence','Status','Reviewed By','Review Date','Linked TX ID'],
     ['INBOX-0001',serial('2026-09-17'),'LINE','Image','สลิปโอนเงิน 4000','amount=4000','Transfer',4000,'THB',serial('2026-09-17'),'Dime Save THB','Transfer','','','','High','Need Review','','',''],
     ['INBOX-0002',serial('2026-09-17'),'LINE','Text','ซื้อ AAPL 7.3','asset=AAPL','Buy',7.3,'USD',serial('2026-09-17'),'Dime FCD USD','Investment','AAPL',0.0224,326,'Medium','New','','',''],
+    ['Flow:  LINE  →  AI/OCR  →  16_INBOX  →  Review  →  Confirm  →  04_TRANSACTIONS'],
   ],
 };
 
@@ -69,9 +74,15 @@ check(out.inbox[0].date === '2026-09-17', `inbox date: ${out.inbox[0].date}`);
 
 // "Movement (TX)" is gone from the sheet; the fields it fed are gone too.
 check(!('monthlyInflow' in out.accounts[0]), 'monthlyInflow should no longer be emitted');
-check(out.accounts[2].balance === 753.49, `USD balance: ${out.accounts[2].balance}`);
 
-check(out.investment.total === 63647, `investment total: ${out.investment.total}`);
+
+check(out.investment.total === 167647, `investment total: ${out.investment.total}`);
+// The sheet's own TOTAL row must not be summed on top of the rows it totals.
+check(out.investment.total !== 335294, 'TOTAL row double-counted');
+check(out.investment.byMarket.gold.value === 104000, `gold (filed as Commodity): ${out.investment.byMarket.gold.value}`);
+check(out.accounts.length === 3, `footer note parsed as an account: ${out.accounts.length}`);
+check(out.inbox.length === 2, `footer note parsed as an inbox item: ${out.inbox.length}`);
+check(out.accounts[2].balance === 753.49, `float tail not rounded: ${out.accounts[2].balance}`);
 check(out.investment.byMarket.usStocks.holdings.length === 2, 'closed position not excluded');
 check(out.dca.length === 2, `dca rows: ${out.dca.length}`);
 check(out.netWorthHistory.length === 2, `zero-value nw rows not filtered: ${out.netWorthHistory.length}`);

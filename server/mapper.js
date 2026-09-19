@@ -23,6 +23,11 @@ function num(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Sheet arithmetic leaves long float tails (19126.09999999999).
+function money(v) {
+  return Math.round(num(v) * 100) / 100;
+}
+
 function str(v) {
   if (v === null || v === undefined) return '';
   const s = String(v).trim();
@@ -122,7 +127,8 @@ function buildMonthly(current, previous) {
 
 function buildAccounts(rows) {
   return rows
-    .filter((r) => str(r['Account ID']))
+    // Footer notes land in the ID column; a real account also has a name.
+    .filter((r) => str(r['Account ID']) && str(r['Account Name']))
     .map((r) => {
       return {
         id: str(r['Account ID']),
@@ -130,8 +136,8 @@ function buildAccounts(rows) {
         institution: str(r.Institution),
         type: str(r['Account Type']),
         currency: str(r.Currency) || 'THB',
-        balance: num(r['Current Balance']),
-        availableBalance: num(r['Available Balance']) || num(r['Current Balance']),
+        balance: money(r['Current Balance']),
+        availableBalance: money(r['Available Balance']) || money(r['Current Balance']),
         lastUpdated: toISO(r['Last Updated']),
         status: str(r.Status) || 'Active',
       };
@@ -141,15 +147,22 @@ function buildAccounts(rows) {
 const MARKETS = [
   { key: 'usStocks', match: ['US'], ticker: 'US', label: 'หุ้นสหรัฐ 🇺🇸' },
   { key: 'setStocks', match: ['SET', 'TH'], ticker: 'SET', label: 'หุ้นไทย 🇹🇭' },
-  { key: 'gold', match: ['GOLD'], ticker: 'GOLD', label: 'ทองคำ 🪙' },
+  // The sheet files gold under "Commodity", not "Gold".
+  { key: 'gold', match: ['GOLD', 'COMMODITY'], ticker: 'GOLD', label: 'ทองคำ 🪙' },
   { key: 'pvd', match: ['PVD'], ticker: 'PVD', label: 'PVD' },
 ];
 
+const KNOWN_MARKETS = new Set(MARKETS.flatMap((m) => m.match));
+
 function buildInvestment(rows) {
+  // Requiring a known market drops the sheet's own TOTAL row (blank market),
+  // which would otherwise be summed on top of the holdings it totals.
   const active = rows.filter(
-    (r) => str(r.Asset) && str(r.Status).toLowerCase() !== 'closed'
+    (r) =>
+      str(r.Asset) &&
+      KNOWN_MARKETS.has(str(r.Market).toUpperCase()) &&
+      str(r.Status).toLowerCase() !== 'closed'
   );
-  const total = active.reduce((sum, r) => sum + num(r['Current Value (THB)']), 0);
 
   const byMarket = {};
   MARKETS.forEach((m) => {
@@ -162,17 +175,23 @@ function buildInvestment(rows) {
       value: Math.round(value),
       qty: Math.round(held.reduce((s, r) => s + num(r['Quantity (Official)']), 0) * 10000) / 10000,
       performance: cost ? Math.round(((value - cost) / cost) * 1000) / 10 : 0,
-      allocation: total ? Math.round((value / total) * 1000) / 10 : 0,
-      holdings: held.map((r) => ({
-        asset: str(r.Asset),
-        qty: num(r['Quantity (Official)']),
-        value: Math.round(num(r['Current Value (THB)'])),
-        returnPct: Math.round(num(r['Return %']) * 1000) / 10,
-      })),
+      holdings: held
+        .filter((r) => num(r['Current Value (THB)']) > 0)
+        .map((r) => ({
+          asset: str(r.Asset),
+          qty: num(r['Quantity (Official)']),
+          value: Math.round(num(r['Current Value (THB)'])),
+          returnPct: Math.round(num(r['Return %']) * 1000) / 10,
+        })),
     };
   });
 
-  return { total: Math.round(total), byMarket };
+  const total = Object.values(byMarket).reduce((s, m) => s + m.value, 0);
+  Object.values(byMarket).forEach((m) => {
+    m.allocation = total ? Math.round((m.value / total) * 1000) / 10 : 0;
+  });
+
+  return { total, byMarket };
 }
 
 function buildDca(rows, monthKeyWanted) {
@@ -208,7 +227,7 @@ function buildNetWorthHistory(rows) {
 function buildInbox(rows) {
   const confidenceScale = { high: 0.95, medium: 0.75, low: 0.5 };
   return rows
-    .filter((r) => str(r['Inbox ID']))
+    .filter((r) => str(r['Inbox ID']) && str(r.Source))
     .map((r) => {
       const raw = r.Confidence;
       const asText = str(raw).toLowerCase();
@@ -272,8 +291,8 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const prevNetWorth = netWorthHistory[netWorthHistory.length - 2] ?? null;
 
   // 02_MONTHLY carries its own Net Worth column; prefer it, fall back to 14_NET_WORTH.
-  const netWorth = num(current?.['Net Worth']) || latestNetWorth?.value || 0;
-  const remainingCash = num(current?.['Remaining Cash (Actual)']);
+  const netWorth = Math.round(num(current?.['Net Worth']) || latestNetWorth?.value || 0);
+  const remainingCash = money(current?.['Remaining Cash (Actual)']);
 
   const dashboard = {
     month: monthLabel(key),
