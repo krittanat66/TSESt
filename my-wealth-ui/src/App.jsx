@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { WealthProvider, useWealth } from './data/WealthContext';
 import { BottomNavigation } from './components/Navigation';
+import { PasscodeGate } from './components/PasscodeGate';
 import { HomeScreen } from './screens/HomeScreen';
 import { MonthlyScreen } from './screens/MonthlyScreen';
 import { AccountsScreen } from './screens/AccountsScreen';
@@ -29,7 +30,11 @@ function DataSourceBadge() {
 }
 
 function AppShell() {
+  const { locked, loading } = useWealth();
   const [activeTab, setActiveTab] = useState('home');
+
+  if (loading) return <div className="min-h-screen bg-bg-primary" />;
+  if (locked) return <PasscodeGate />;
 
   const renderScreen = () => {
     switch (activeTab) {

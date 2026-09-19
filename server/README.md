@@ -126,6 +126,32 @@ accepted from the request.
 Scores themselves come from the monthly research pass, not from arithmetic —
 this endpoint records a decision, it does not make one.
 
+## Passcode
+
+`APP_PASSCODE` guards `/api/wealth`, `/api/dca-scores` and `/api/refresh`.
+There is no per-user login: one shared passcode, sent as
+`Authorization: Bearer <code>`, because the payload carries every balance and
+holding in one response and must not be readable by whoever finds the URL.
+
+It fails closed — with no passcode set those routes return 503 rather than
+serving data, so a deploy that forgets the variable is broken instead of
+public. `GET /api/health` stays open and reports only whether things are
+configured.
+
+## Serving the app
+
+When `../my-wealth-ui/dist` exists the server also serves it, so a deploy is
+one process rather than a static host plus an API host. Build the UI first:
+
+```bash
+cd ../my-wealth-ui && npm run build
+cd ../server && npm start
+```
+
+The UI is a PWA: on iOS, Safari ▸ Share ▸ *Add to Home Screen* installs it as
+a full-screen app with its own icon. Requires HTTPS, so this only applies once
+deployed, not on localhost.
+
 ## Endpoints
 
 | Route | Purpose |

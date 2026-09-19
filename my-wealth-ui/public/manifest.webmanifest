@@ -1,0 +1,17 @@
+{
+  "name": "MY WEALTH",
+  "short_name": "MY WEALTH",
+  "description": "ศูนย์รวมการเงินส่วนตัว — บัญชี พอร์ตลงทุน และแผน DCA",
+  "lang": "th",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06111F",
+  "theme_color": "#06111F",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

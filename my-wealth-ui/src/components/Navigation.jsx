@@ -10,8 +10,10 @@ export function BottomNavigation({ activeTab, onTabChange }) {
     { id: 'more', label: 'More', icon: MoreHorizontal },
   ];
 
+  // The inset padding keeps the bar clear of the home indicator when the app
+  // runs full-screen from the iOS home screen.
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-bg-primary to-bg-card border-t border-border-soft">
+    <nav className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-bg-primary to-bg-card border-t border-border-soft pb-[env(safe-area-inset-bottom,0px)]">
       <div className="flex items-center justify-around max-w-md mx-auto h-20 px-2">
         {tabs.map(tab => {
           const Icon = tab.icon;
