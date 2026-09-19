@@ -212,6 +212,28 @@ function buildDca(rows, monthKeyWanted) {
   });
 }
 
+// 20_DCA_SCORE records the monthly judgement call: how each holding scored,
+// what drove the score, and how the buy has done since. Scores come from
+// research, not arithmetic, so the sheet is the record and this only reads it.
+function buildDcaScores(rows, monthKeyWanted) {
+  return rows
+    .filter((r) => str(r.Ticker) && monthKey(r.Month) === monthKeyWanted)
+    .map((r) => ({
+      ticker: str(r.Ticker),
+      score: num(r.Score),
+      weight: Math.round(num(r['Weight %']) * 1000) / 10,
+      amount: Math.round(num(r['Amount (THB)'])),
+      buyPrice: money(r['Buy Price (USD)']),
+      currentPrice: money(r['Current Price']),
+      resultPct: Math.round(num(r['Result %']) * 1000) / 10,
+      reason: str(r.Reason),
+      newsPositive: str(r['News (+)']),
+      newsNegative: str(r['News (-)']),
+      note: str(r.Note),
+    }))
+    .sort((a, b) => b.score - a.score);
+}
+
 function buildNetWorthHistory(rows) {
   return rows
     .filter((r) => toISO(r.Date))
@@ -284,6 +306,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const accounts = buildAccounts(rowsToObjects(raw.accounts));
   const investment = buildInvestment(rowsToObjects(raw.investment));
   const dca = buildDca(rowsToObjects(raw.dca), key);
+  const dcaScores = buildDcaScores(rowsToObjects(raw.dcaScore ?? []), key);
   const netWorthHistory = buildNetWorthHistory(rowsToObjects(raw.netWorth));
   const inbox = buildInbox(rowsToObjects(raw.inbox));
 
@@ -319,6 +342,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     accounts,
     investment,
     dca,
+    dcaScores,
     netWorthHistory,
     inbox,
     alerts: buildAlerts(monthly, latestNetWorth),

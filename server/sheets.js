@@ -38,6 +38,23 @@ export function buildAuth() {
   );
 }
 
+// 20_DCA_SCORE is added by hand and may not exist yet, and batchGet rejects the
+// whole request when any range names a missing sheet. So it is fetched apart.
+export async function fetchDcaScoreRows() {
+  try {
+    const sheets = google.sheets({ version: 'v4', auth: buildAuth() });
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: "'20_DCA_SCORE'!B5:M300",
+      valueRenderOption: 'UNFORMATTED_VALUE',
+      dateTimeRenderOption: 'SERIAL_NUMBER',
+    });
+    return res.data.values ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchSheetValues() {
   const spreadsheetId = process.env.SPREADSHEET_ID;
   if (!spreadsheetId) {
@@ -59,5 +76,6 @@ export async function fetchSheetValues() {
   keys.forEach((key, i) => {
     out[key] = res.data.valueRanges?.[i]?.values ?? [];
   });
+  out.dcaScore = await fetchDcaScoreRows();
   return out;
 }

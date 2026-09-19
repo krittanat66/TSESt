@@ -170,6 +170,30 @@ export const mockData = {
     },
   ],
 
+  // Per-holding DCA scoring (from 20_DCA_SCORE)
+  dcaScores: [
+    {
+      ticker: 'NVDA', score: 8, weight: 24.2, amount: 727,
+      buyPrice: 217.14, currentPrice: 231.5, resultPct: 6.6,
+      reason: 'ราคาย่อจาก sentiment ทั้งกลุ่ม ไม่ใช่ปัญหาเฉพาะตัว',
+      newsPositive: 'ดีมานด์ศูนย์ข้อมูลยังโตต่อเนื่อง',
+      newsNegative: '', note: '',
+    },
+    {
+      ticker: 'GOOGL', score: 6, weight: 18.2, amount: 545,
+      buyPrice: 336.82, currentPrice: 341.1, resultPct: 1.3,
+      reason: 'ราคาใกล้เป้านักวิเคราะห์ ถือน้ำหนักกลาง',
+      newsPositive: '', newsNegative: 'คดี antitrust ยังไม่มีข้อสรุป',
+      note: '',
+    },
+    {
+      ticker: 'SCHG', score: 2, weight: 6.1, amount: 182,
+      buyPrice: 35.13, currentPrice: 35.9, resultPct: 2.2,
+      reason: 'ETF กระจายความเสี่ยง ให้น้ำหนักต่ำเป็นฐานตามกฎ',
+      newsPositive: '', newsNegative: '', note: '',
+    },
+  ],
+
   // Net worth trend (mock)
   netWorthHistory: [
     { date: 'Sep 01', value: 228545 },

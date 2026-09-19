@@ -46,6 +46,13 @@ const raw = {
     ['INBOX-0002',serial('2026-09-17'),'LINE','Text','ซื้อ AAPL 7.3','asset=AAPL','Buy',7.3,'USD',serial('2026-09-17'),'Dime FCD USD','Investment','AAPL',0.0224,326,'Medium','New','','',''],
     ['Flow:  LINE  →  AI/OCR  →  16_INBOX  →  Review  →  Confirm  →  04_TRANSACTIONS'],
   ],
+  dcaScore: [
+    ['Month','Ticker','Score','Weight %','Amount (THB)','Buy Price (USD)','Reason','News (+)','News (-)','Current Price','Result %','Note'],
+    [serial('2026-09-01'),'NVDA',8,0.242,727,217.14,'ย่อตาม sentiment ทั้งกลุ่ม','ดีมานด์ศูนย์ข้อมูลโต','',231.5,0.066,''],
+    [serial('2026-09-01'),'SCHG',2,0.061,182,35.13,'ETF ฐาน น้ำหนักต่ำตามกฎ','','',35.9,0.022,''],
+    [serial('2026-08-01'),'NVDA',5,0.15,450,200,'เดือนก่อน','','',217.14,0.085,''],
+    ['ℹ คะแนนมาจากการวิเคราะห์รายเดือน ไม่ใช่สูตรคำนวณ'],
+  ],
 };
 
 const out = mapSheetsToAppData(raw);
@@ -87,6 +94,13 @@ check(out.investment.byMarket.usStocks.holdings.length === 2, 'closed position n
 check(out.dca.length === 2, `dca rows: ${out.dca.length}`);
 check(out.netWorthHistory.length === 2, `zero-value nw rows not filtered: ${out.netWorthHistory.length}`);
 check(out.inbox[0].confidence === 0.95, 'confidence text not mapped');
+
+// DCA scores are per-month and ranked, and the footer note is not a holding.
+check(out.dcaScores.length === 2, `dca scores for the month: ${out.dcaScores.length}`);
+check(out.dcaScores[0].ticker === 'NVDA', `not sorted by score: ${out.dcaScores[0].ticker}`);
+check(out.dcaScores[0].weight === 24.2, `weight: ${out.dcaScores[0].weight}`);
+check(out.dcaScores[0].resultPct === 6.6, `resultPct: ${out.dcaScores[0].resultPct}`);
+check(out.dcaScores[1].newsPositive === '', 'empty news should stay empty');
 
 // The real sheet has no confirmed income/expense yet — only investment moves.
 // That month must still win over the empty future rows.

@@ -2,11 +2,13 @@ import { Header } from '../components/Navigation';
 import { AllocationChart } from '../components/Charts';
 import { formatCurrency, formatPercent } from '../data/mockData';
 import { useWealth } from '../data/WealthContext';
+import { DcaScoreBoard } from '../components/DcaScore';
 
 export function InvestmentScreen() {
   const { data } = useWealth();
   const investment = data.investment;
   const dca = data.dca;
+  const dcaScores = data.dcaScores ?? [];
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
@@ -46,6 +48,9 @@ export function InvestmentScreen() {
 
         {/* Allocation Chart */}
         <AllocationChart data={investment.byMarket} />
+
+        {/* Per-holding DCA scoring */}
+        <DcaScoreBoard items={dcaScores} month={data.dashboard.month} />
 
         {/* DCA Progress */}
         <div>
