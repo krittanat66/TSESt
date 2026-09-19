@@ -122,8 +122,9 @@ function replaceMonth(sheet, month, rows) {
     sheet.getRange(r, 11).setFormula(
       '=IFERROR(XLOOKUP($C' + r + ",'19_PRICE_FEED'!$B$6:$B$22,'19_PRICE_FEED'!$G$6:$G$22),0)"
     );
+    // No current price means unknown, not a 100% loss.
     sheet.getRange(r, 12).setFormula(
-      '=IFERROR($K' + r + '/$G' + r + '-1,"")'
+      '=IF(N($K' + r + ')>0,IFERROR($K' + r + '/$G' + r + '-1,""),"")'
     );
   }
 
