@@ -1,0 +1,43 @@
+# Render Blueprint — one web service running the API and serving the built UI.
+#
+# The server serves ../my-wealth-ui/dist when it exists, so the UI is built
+# first and the whole thing deploys as a single process.
+#
+# Secrets are marked sync:false, which makes Render prompt for them on the
+# first deploy and keeps them out of this file.
+
+services:
+  - type: web
+    name: my-wealth
+    runtime: node
+    plan: free
+    region: singapore
+    branch: claude/upbeat-clarke-2jr5ni
+    buildCommand: cd my-wealth-ui && npm ci && npm run build && cd ../server && npm ci
+    startCommand: cd server && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # The converted Google Sheet (MY_WEALTH), not the original .xlsx upload.
+      - key: SPREADSHEET_ID
+        sync: false
+
+      # Sheets API key, restricted to the Sheets API in Cloud Console.
+      - key: GOOGLE_API_KEY
+        sync: false
+
+      # Guards every data route. Without it those routes refuse to serve, so a
+      # deploy that skips this is broken rather than public.
+      - key: APP_PASSCODE
+        sync: false
+
+      # Only needed for writing DCA scores back through the Apps Script Web App.
+      - key: APPS_SCRIPT_URL
+        sync: false
+      - key: APPS_SCRIPT_TOKEN
+        sync: false
+
+      - key: CACHE_TTL_SECONDS
+        value: "60"
