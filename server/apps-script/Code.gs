@@ -158,59 +158,7 @@ function monthKey(v) {
   return s.length >= 7 ? s.slice(0, 7) : s;
 }
 
-/**
- * Run this from the Apps Script editor to check the whole write path without
- * a terminal: pick testWrite in the function dropdown and press Run, then
- * look at 20_DCA_SCORE. It writes to month 2000-01 so real months are never
- * touched; delete those rows afterwards, or leave them — the app only ever
- * shows the current month.
- */
-function testWrite() {
-  const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
-  if (!token) throw new Error('Script Property TOKEN is not set.');
 
-  const res = doPost({
-    postData: {
-      contents: JSON.stringify({
-        token: token,
-        month: '2000-01-01',
-        rows: [
-          { ticker: 'TEST-A', score: 8, buyPrice: 100,
-            reason: 'ทดสอบคะแนนสูง', newsPositive: 'ข่าวบวกตัวอย่าง', newsNegative: '' },
-          { ticker: 'TEST-B', score: 2, buyPrice: 50,
-            reason: 'ทดสอบคะแนนต่ำ', newsPositive: '', newsNegative: 'ข่าวลบตัวอย่าง' },
-        ],
-      }),
-    },
-  });
-
-  Logger.log(res.getContent());
-}
-
-/**
- * Prints what replaceMonth actually sees, so a mismatch can be read off the
- * log instead of guessed at. Run it from the editor and check Execution log.
- */
-function debugMonths() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB);
-  if (!sheet) { Logger.log('no tab ' + TAB); return; }
-
-  const lastRow = sheet.getLastRow();
-  Logger.log('lastRow=' + lastRow + '  target=' + monthKey('2000-01-01'));
-  if (lastRow < FIRST_DATA_ROW) { Logger.log('no data rows'); return; }
-
-  const vals = sheet.getRange(FIRST_DATA_ROW, 2, lastRow - FIRST_DATA_ROW + 1, 2).getValues();
-  vals.forEach(function (row, i) {
-    Logger.log(
-      'row ' + (FIRST_DATA_ROW + i) +
-      ' | ticker=' + row[1] +
-      ' | raw=' + row[0] +
-      ' | type=' + (row[0] instanceof Date ? 'Date' : typeof row[0]) +
-      ' | key=' + monthKey(row[0]) +
-      ' | match=' + (monthKey(row[0]) === monthKey('2000-01-01'))
-    );
-  });
-}
 
 /** Wipes every data row in the tab. Use to start clean after a bad run. */
 function clearAllRows() {
@@ -220,4 +168,57 @@ function clearAllRows() {
   if (lastRow < FIRST_DATA_ROW) { Logger.log('already empty'); return; }
   sheet.deleteRows(FIRST_DATA_ROW, lastRow - FIRST_DATA_ROW + 1);
   Logger.log('cleared ' + (lastRow - FIRST_DATA_ROW + 1) + ' rows');
+}
+
+/**
+ * The folder holding the sheet and the dca-*.json score files.
+ */
+const DCA_FOLDER_ID = '1suUMAskfhU1TvoTWat0Uc6Ub8ZNB0_Kl';
+
+/**
+ * Reads every dca-*.json in the folder and writes each one's month into the
+ * tab. This is the whole point of the Drive hop: scores are produced
+ * elsewhere and dropped in as a file, so nothing has to be pasted into this
+ * project again — a new month is a new file, not new code.
+ *
+ * Safe to re-run: each month replaces only its own rows.
+ */
+function syncDcaFromDrive() {
+  const folder = DriveApp.getFolderById(DCA_FOLDER_ID);
+  const files = folder.getFilesByType('application/json');
+  const sheet = ensureTab();
+  let done = 0;
+
+  while (files.hasNext()) {
+    const file = files.next();
+    if (file.getName().indexOf('dca-') !== 0) continue;
+
+    let payload;
+    try {
+      payload = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+    } catch (err) {
+      Logger.log('ข้าม ' + file.getName() + ': อ่าน JSON ไม่ได้ — ' + err);
+      continue;
+    }
+    if (!payload.month || !Array.isArray(payload.rows) || !payload.rows.length) {
+      Logger.log('ข้าม ' + file.getName() + ': ไม่มี month หรือ rows');
+      continue;
+    }
+
+    replaceMonth(sheet, payload.month, payload.rows);
+    done += 1;
+    Logger.log(file.getName() + ' → ' + payload.month + ' (' + payload.rows.length + ' แถว)');
+  }
+
+  Logger.log(done ? ('sync เสร็จ: ' + done + ' ไฟล์') : 'ไม่เจอไฟล์ dca-*.json ในโฟลเดอร์');
+  return done;
+}
+
+/** Runs syncDcaFromDrive on the 1st of each month. Run once to install. */
+function installMonthlyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'syncDcaFromDrive') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('syncDcaFromDrive').timeBased().onMonthDay(1).atHour(9).create();
+  Logger.log('ตั้งเวลาแล้ว: รัน syncDcaFromDrive ทุกวันที่ 1 ประมาณ 9:00');
 }
