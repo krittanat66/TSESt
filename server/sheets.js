@@ -43,7 +43,8 @@ export async function fetchSheetValues() {
     spreadsheetId,
     ranges: keys.map((k) => RANGES[k]),
     valueRenderOption: 'UNFORMATTED_VALUE',
-    dateTimeRenderOption: 'FORMATTED_STRING',
+    // Serial numbers, not text: the tabs display Thai dates that no parser reads.
+    dateTimeRenderOption: 'SERIAL_NUMBER',
   });
 
   const out = {};

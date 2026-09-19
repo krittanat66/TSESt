@@ -29,17 +29,26 @@ function str(v) {
   return s === 'N/A' || s === '—' ? '' : s;
 }
 
-// Sheets may hand back "2026-09-01", "2026-09-01 00:00:00" or "1/9/2026".
-function monthKey(v) {
+// Dates arrive as serial numbers (days since 1899-12-30) rather than text,
+// because the tabs display Thai dates ("ก.ย. 2025", "17/9/2026") that no Date
+// parser handles. Strings are still accepted so fixtures stay readable.
+const SHEETS_EPOCH_OFFSET = 25569; // days from 1899-12-30 to 1970-01-01
+
+function toISO(v) {
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const d = new Date(Math.round((v - SHEETS_EPOCH_OFFSET) * 86400000));
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
   const s = str(v);
   if (!s) return '';
-  const iso = s.match(/^(\d{4})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}`;
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) {
-    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
-  }
-  return s;
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+}
+
+function monthKey(v) {
+  return toISO(v).slice(0, 7);
 }
 
 function monthLabel(key) {
@@ -68,7 +77,12 @@ function pickMonthRows(rows, requestedMonth) {
   if (idx === -1) {
     for (let i = dated.length - 1; i >= 0; i -= 1) {
       const r = dated[i];
-      if (num(r['Income (Actual)']) || num(r['Expense (Actual)']) || num(r['Saving (Actual)'])) {
+      if (
+        num(r['Income (Actual)']) ||
+        num(r['Expense (Actual)']) ||
+        num(r['Saving (Actual)']) ||
+        num(r['Investment (Actual)'])
+      ) {
         idx = i;
         break;
       }
@@ -110,7 +124,6 @@ function buildAccounts(rows) {
   return rows
     .filter((r) => str(r['Account ID']))
     .map((r) => {
-      const movement = num(r['Movement (TX)']);
       return {
         id: str(r['Account ID']),
         name: str(r['Account Name']),
@@ -119,9 +132,7 @@ function buildAccounts(rows) {
         currency: str(r.Currency) || 'THB',
         balance: num(r['Current Balance']),
         availableBalance: num(r['Available Balance']) || num(r['Current Balance']),
-        monthlyInflow: movement > 0 ? movement : 0,
-        monthlyOutflow: movement < 0 ? Math.abs(movement) : 0,
-        lastUpdated: str(r['Last Updated']),
+        lastUpdated: toISO(r['Last Updated']),
         status: str(r.Status) || 'Active',
       };
     });
@@ -184,9 +195,9 @@ function buildDca(rows, monthKeyWanted) {
 
 function buildNetWorthHistory(rows) {
   return rows
-    .filter((r) => str(r.Date))
+    .filter((r) => toISO(r.Date))
     .map((r) => ({
-      date: str(r.Date).slice(0, 10),
+      date: toISO(r.Date),
       value: Math.round(num(r['Net Worth (Calculated)']) || num(r['Net Worth (Reported)'])),
       totalAssets: Math.round(num(r['Total Assets'])),
       debt: Math.round(num(r.Debt)),
@@ -207,7 +218,7 @@ function buildInbox(rows) {
         type: str(r['Transaction Type']),
         amount: num(r.Amount),
         currency: str(r.Currency) || 'THB',
-        date: str(r.Date).slice(0, 10),
+        date: toISO(r.Date),
         account: str(r.Account),
         category: str(r.Category),
         asset: str(r.Asset) || null,
