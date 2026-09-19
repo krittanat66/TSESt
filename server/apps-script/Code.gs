@@ -224,46 +224,26 @@ function installMonthlyTrigger() {
 }
 
 /**
- * Applies cell operations listed in ops-*.json files in the folder.
- * Each op is { sheet, cell, formula } or { sheet, cell, value }.
+ * Applies cell operations from ops-*.json files in the folder, each op being
+ * { sheet, cell, formula }.
  *
  * Same reasoning as syncDcaFromDrive: a change to the sheet arrives as a
- * file, so it never needs new code pasted into this project again.
+ * file, so it never needs new code pasted into this project again. A bad
+ * sheet name throws rather than being skipped — these files are generated,
+ * so a miss means the generator is wrong and should be loud.
  */
 function applyOpsFromDrive() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const files = DriveApp.getFolderById(DCA_FOLDER_ID).getFilesByType('application/json');
-  let applied = 0;
-  let skipped = 0;
-
+  let n = 0;
   while (files.hasNext()) {
-    const file = files.next();
-    if (file.getName().indexOf('ops-') !== 0) continue;
-
-    let payload;
-    try {
-      payload = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
-    } catch (err) {
-      Logger.log('ข้าม ' + file.getName() + ': อ่าน JSON ไม่ได้ — ' + err);
-      continue;
-    }
-
-    (payload.ops || []).forEach(function (op) {
-      const sheet = ss.getSheetByName(op.sheet);
-      if (!sheet) {
-        Logger.log('ไม่เจอแท็บ ' + op.sheet);
-        skipped += 1;
-        return;
-      }
-      const range = sheet.getRange(op.cell);
-      if (op.formula !== undefined) range.setFormula(op.formula);
-      else range.setValue(op.value);
-      applied += 1;
+    const f = files.next();
+    if (f.getName().indexOf('ops-') !== 0) continue;
+    JSON.parse(f.getBlob().getDataAsString('UTF-8')).ops.forEach(function (op) {
+      ss.getSheetByName(op.sheet).getRange(op.cell).setFormula(op.formula);
+      n += 1;
     });
-
-    Logger.log(file.getName() + ': ' + (payload.note || '') );
   }
-
-  Logger.log('เสร็จ: ใส่ ' + applied + ' ช่อง' + (skipped ? ', ข้าม ' + skipped : ''));
-  return applied;
+  Logger.log('ใส่ ' + n + ' ช่อง');
+  return n;
 }
