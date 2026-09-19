@@ -132,7 +132,15 @@ npm run build
 
 ## 🔄 Data Model Integration
 
-Mock data is structured to match MY WEALTH Excel model:
+Live data comes from the MY WEALTH workbook on Google Sheets via the bridge in
+[`../server`](../server/README.md) — see that README for the one-time setup.
+Start it with `npm start` in `server/`, then `npm run dev` here; Vite proxies
+`/api` to port 3001.
+
+Without the server running the app falls back to `mockData` and the badge in
+the top-right corner reads **Mock data** instead of **Live sheet**.
+
+Both sources share one shape, matching the Excel model:
 ```javascript
 mockData = {
   dashboard,    // 01_DASHBOARD

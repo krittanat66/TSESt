@@ -2,15 +2,17 @@ import { Bell, User } from 'lucide-react';
 import { Header } from '../components/Navigation';
 import { MoneyCard, StatCard, AccountCard, ProgressBar } from '../components/MoneyCard';
 import { NetWorthChart, AllocationChart } from '../components/Charts';
-import { mockData, formatCurrency, formatPercent } from '../data/mockData';
+import { formatCurrency, formatPercent } from '../data/mockData';
+import { useWealth } from '../data/WealthContext';
 
 export function HomeScreen() {
-  const dashboard = mockData.dashboard;
-  const accounts = mockData.accounts.slice(0, 4);
-  const investment = mockData.investment;
-  const dca = mockData.dca;
-  const alerts = mockData.alerts;
-  const netWorthHistory = mockData.netWorthHistory;
+  const { data } = useWealth();
+  const dashboard = data.dashboard;
+  const accounts = data.accounts.slice(0, 4);
+  const investment = data.investment;
+  const dca = data.dca;
+  const alerts = data.alerts;
+  const netWorthHistory = data.netWorthHistory;
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">

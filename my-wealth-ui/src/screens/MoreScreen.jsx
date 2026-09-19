@@ -1,9 +1,10 @@
 import { ChevronRight, Inbox, Settings, PieChart, FileText, AlertCircle, Lock } from 'lucide-react';
 import { Header } from '../components/Navigation';
-import { mockData } from '../data/mockData';
+import { useWealth } from '../data/WealthContext';
 
 export function MoreScreen() {
-  const inboxItems = mockData.inbox;
+  const { data } = useWealth();
+  const inboxItems = data.inbox;
 
   const menuItems = [
     { icon: Inbox, label: 'Data Inbox', badge: inboxItems.length, color: 'text-cyan' },

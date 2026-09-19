@@ -2,10 +2,12 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Header, TabBar } from '../components/Navigation';
 import { ProgressBar } from '../components/MoneyCard';
 import { CashFlowChart } from '../components/Charts';
-import { mockData, formatCurrency } from '../data/mockData';
+import { formatCurrency } from '../data/mockData';
+import { useWealth } from '../data/WealthContext';
 
 export function MonthlyScreen() {
-  const monthly = mockData.monthly;
+  const { data } = useWealth();
+  const monthly = data.monthly;
   const [activeTab, setActiveTab] = null;
 
   return (

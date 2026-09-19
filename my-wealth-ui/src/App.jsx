@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { WealthProvider, useWealth } from './data/WealthContext';
 import { BottomNavigation } from './components/Navigation';
 import { HomeScreen } from './screens/HomeScreen';
 import { MonthlyScreen } from './screens/MonthlyScreen';
@@ -7,7 +8,27 @@ import { InvestmentScreen } from './screens/InvestmentScreen';
 import { WealthScreen } from './screens/WealthScreen';
 import { MoreScreen } from './screens/MoreScreen';
 
-export function App() {
+function DataSourceBadge() {
+  const { loading, isLive, error, refresh } = useWealth();
+
+  if (loading) return null;
+
+  return (
+    <button
+      onClick={refresh}
+      title={error ? `Sheet unreachable: ${error}` : 'Tap to refresh from Google Sheets'}
+      className={`fixed top-3 right-3 z-50 text-[10px] px-2 py-1 rounded-full border ${
+        isLive
+          ? 'border-emerald/50 text-emerald bg-emerald/10'
+          : 'border-warning/50 text-warning bg-warning/10'
+      }`}
+    >
+      {isLive ? '● Live sheet' : '● Mock data'}
+    </button>
+  );
+}
+
+function AppShell() {
   const [activeTab, setActiveTab] = useState('home');
 
   const renderScreen = () => {
@@ -31,6 +52,8 @@ export function App() {
 
   return (
     <div className="bg-bg-primary min-h-screen text-white font-sans">
+      <DataSourceBadge />
+
       {/* Mobile viewport */}
       <div className="max-w-md mx-auto bg-bg-primary relative">
         {renderScreen()}
@@ -42,6 +65,14 @@ export function App() {
         <p>MY WEALTH UI • Mobile 390×844px viewport</p>
       </div>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <WealthProvider>
+      <AppShell />
+    </WealthProvider>
   );
 }
 

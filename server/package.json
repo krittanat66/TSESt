@@ -1,0 +1,19 @@
+{
+  "name": "my-wealth-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Google Sheets data bridge for MY WEALTH UI",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node mapper.test.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^144.0.0"
+  }
+}

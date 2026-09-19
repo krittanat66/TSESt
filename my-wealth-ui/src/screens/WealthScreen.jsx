@@ -1,10 +1,12 @@
 import { Header } from '../components/Navigation';
 import { NetWorthChart } from '../components/Charts';
-import { mockData, formatCurrency } from '../data/mockData';
+import { formatCurrency } from '../data/mockData';
+import { useWealth } from '../data/WealthContext';
 
 export function WealthScreen() {
-  const dashboard = mockData.dashboard;
-  const netWorthHistory = mockData.netWorthHistory;
+  const { data } = useWealth();
+  const dashboard = data.dashboard;
+  const netWorthHistory = data.netWorthHistory;
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">

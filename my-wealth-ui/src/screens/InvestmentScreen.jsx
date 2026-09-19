@@ -1,10 +1,12 @@
 import { Header } from '../components/Navigation';
 import { AllocationChart } from '../components/Charts';
-import { mockData, formatCurrency, formatPercent } from '../data/mockData';
+import { formatCurrency, formatPercent } from '../data/mockData';
+import { useWealth } from '../data/WealthContext';
 
 export function InvestmentScreen() {
-  const investment = mockData.investment;
-  const dca = mockData.dca;
+  const { data } = useWealth();
+  const investment = data.investment;
+  const dca = data.dca;
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">

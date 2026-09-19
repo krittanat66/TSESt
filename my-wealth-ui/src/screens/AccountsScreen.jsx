@@ -1,9 +1,11 @@
 import { Header } from '../components/Navigation';
 import { AccountCard } from '../components/MoneyCard';
-import { mockData, formatCurrency } from '../data/mockData';
+import { formatCurrency } from '../data/mockData';
+import { useWealth } from '../data/WealthContext';
 
 export function AccountsScreen() {
-  const accounts = mockData.accounts;
+  const { data } = useWealth();
+  const accounts = data.accounts;
 
   // Group by institution
   const accountsByInstitution = accounts.reduce((acc, account) => {
