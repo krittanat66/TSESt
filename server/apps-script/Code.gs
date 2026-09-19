@@ -222,3 +222,48 @@ function installMonthlyTrigger() {
   ScriptApp.newTrigger('syncDcaFromDrive').timeBased().onMonthDay(1).atHour(9).create();
   Logger.log('ตั้งเวลาแล้ว: รัน syncDcaFromDrive ทุกวันที่ 1 ประมาณ 9:00');
 }
+
+/**
+ * Applies cell operations listed in ops-*.json files in the folder.
+ * Each op is { sheet, cell, formula } or { sheet, cell, value }.
+ *
+ * Same reasoning as syncDcaFromDrive: a change to the sheet arrives as a
+ * file, so it never needs new code pasted into this project again.
+ */
+function applyOpsFromDrive() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const files = DriveApp.getFolderById(DCA_FOLDER_ID).getFilesByType('application/json');
+  let applied = 0;
+  let skipped = 0;
+
+  while (files.hasNext()) {
+    const file = files.next();
+    if (file.getName().indexOf('ops-') !== 0) continue;
+
+    let payload;
+    try {
+      payload = JSON.parse(file.getBlob().getDataAsString('UTF-8'));
+    } catch (err) {
+      Logger.log('ข้าม ' + file.getName() + ': อ่าน JSON ไม่ได้ — ' + err);
+      continue;
+    }
+
+    (payload.ops || []).forEach(function (op) {
+      const sheet = ss.getSheetByName(op.sheet);
+      if (!sheet) {
+        Logger.log('ไม่เจอแท็บ ' + op.sheet);
+        skipped += 1;
+        return;
+      }
+      const range = sheet.getRange(op.cell);
+      if (op.formula !== undefined) range.setFormula(op.formula);
+      else range.setValue(op.value);
+      applied += 1;
+    });
+
+    Logger.log(file.getName() + ': ' + (payload.note || '') );
+  }
+
+  Logger.log('เสร็จ: ใส่ ' + applied + ' ช่อง' + (skipped ? ', ข้าม ' + skipped : ''));
+  return applied;
+}
