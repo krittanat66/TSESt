@@ -12,22 +12,30 @@ export const RANGES = {
   inbox: "'16_INBOX'!B5:U200",
 };
 
-function buildAuth() {
+// Two ways in. A service account reads a private sheet and is the safer one.
+// An API key needs no key file but only works while the sheet stays
+// link-shared, so the data is readable by anyone holding the URL.
+export function buildAuth() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const key = process.env.GOOGLE_PRIVATE_KEY;
+  const apiKey = process.env.GOOGLE_API_KEY;
 
-  if (!email || !key) {
-    throw new Error(
-      'Missing GOOGLE_SERVICE_ACCOUNT_EMAIL or GOOGLE_PRIVATE_KEY. Copy .env.example to .env and fill it in.'
-    );
+  if (email && key) {
+    return new google.auth.JWT({
+      email,
+      // .env files keep the key on one line with literal \n escapes.
+      key: key.replace(/\\n/g, '\n'),
+      scopes: SCOPES,
+    });
   }
 
-  return new google.auth.JWT({
-    email,
-    // .env files keep the key on one line with literal \n escapes.
-    key: key.replace(/\\n/g, '\n'),
-    scopes: SCOPES,
-  });
+  // googleapis accepts a bare string as an API key.
+  if (apiKey) return apiKey;
+
+  throw new Error(
+    'No credentials. Set GOOGLE_API_KEY (sheet must stay link-shared), or ' +
+      'GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_PRIVATE_KEY. See server/README.md.'
+  );
 }
 
 export async function fetchSheetValues() {

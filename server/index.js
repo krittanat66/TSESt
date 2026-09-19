@@ -30,9 +30,14 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     configured: Boolean(
       process.env.SPREADSHEET_ID &&
-        process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-        process.env.GOOGLE_PRIVATE_KEY
+        (process.env.GOOGLE_API_KEY ||
+          (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))
     ),
+    authMode: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+      ? 'service-account'
+      : process.env.GOOGLE_API_KEY
+        ? 'api-key'
+        : 'none',
   });
 });
 

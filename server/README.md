@@ -28,31 +28,45 @@ Copy the ID out of the URL:
 https://docs.google.com/spreadsheets/d/<SPREADSHEET_ID>/edit
 ```
 
-### 2. Create a service account
+### 2. Choose how the server authenticates
+
+Two ways in. Set one of them.
+
+#### (A) API key — fewer steps, sheet stays public
+
+Only works while the sheet is shared as **Anyone with the link can view**.
+That means anyone who gets the URL can read every balance in it, so treat
+this as a convenience trade, not a default.
 
 1. <https://console.cloud.google.com> → create (or pick) a project
 2. **APIs & Services ▸ Library** → enable **Google Sheets API**
-3. **APIs & Services ▸ Credentials** → *Create credentials* ▸ *Service account*
-4. Open the new account ▸ **Keys** ▸ *Add key* ▸ *Create new key* ▸ **JSON**
+3. **APIs & Services ▸ Credentials** → *Create credentials* ▸ **API key**
+4. Restrict the key: *Edit API key* ▸ **API restrictions** ▸ *Restrict key* ▸
+   pick **Google Sheets API**. An unrestricted key works against every API
+   enabled on the project.
 
-### 3. Share the sheet with the service account
+#### (B) Service account — more steps, sheet stays private
 
-Copy `client_email` from the JSON (looks like
-`something@project-id.iam.gserviceaccount.com`), then in Google Sheets press
-**Share** and give that address **Viewer** access.
+1. Same project, Sheets API enabled
+2. **Credentials** → *Create credentials* ▸ *Service account*
+3. Open the account ▸ **Keys** ▸ *Add key* ▸ *Create new key* ▸ **JSON**
+4. Copy `client_email` from the JSON, then **Share** the sheet with that
+   address as **Viewer**, and set general access back to **Restricted**
 
-This step is the usual cause of a 403 — the service account is a separate
-identity and cannot see the sheet until it is shared.
+Skipping that share step is the usual cause of a 403 — the service account is
+a separate identity and cannot see the sheet until it is shared.
 
-### 4. Configure
+The server prefers a service account when both are set, so switching later is
+an `.env` edit with no code change.
+
+### 3. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_EMAIL` (`client_email`) and
-`GOOGLE_PRIVATE_KEY` (`private_key`). Keep the private key on one line in
-double quotes with its `\n` escapes intact.
+Fill in `SPREADSHEET_ID`, then either `GOOGLE_API_KEY` (A) or
+`GOOGLE_SERVICE_ACCOUNT_EMAIL` + `GOOGLE_PRIVATE_KEY` (B).
 
 `.env` is gitignored. Never commit it.
 
