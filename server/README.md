@@ -87,12 +87,52 @@ Vite proxies `/api` to port 3001, so no CORS setup is needed in development.
 The badge in the app's top-right corner reads **Live sheet** when data came
 from Sheets and **Mock data** when it fell back; tap it to refetch.
 
+## Writing DCA scores back
+
+The Sheets API key is read-only, so scores reach the sheet through an Apps
+Script Web App bound to it (`apps-script/Code.gs`). The script also creates
+`20_DCA_SCORE` and writes its formulas on first use, so the tab needs no
+manual setup.
+
+1. In the sheet: **Extensions ▸ Apps Script**, paste `apps-script/Code.gs`
+2. **Project Settings ▸ Script Properties** → add `TOKEN` = the same value as
+   `APPS_SCRIPT_TOKEN` in `.env`
+3. **Deploy ▸ New deployment ▸ Web app** — *Execute as* **Me**,
+   *Who has access* **Anyone**
+4. Copy the `/exec` URL into `APPS_SCRIPT_URL`
+
+"Anyone" is required because a server-to-server call carries no Google login.
+The token is what actually guards the endpoint, so treat it like a password:
+anyone holding both the URL and the token can write to the sheet. Rotate it by
+changing both Script Properties and `.env`.
+
+`POST /api/dca-scores`:
+
+```json
+{
+  "month": "2026-09",
+  "rows": [
+    { "ticker": "NVDA", "score": 8, "buyPrice": 217.14,
+      "reason": "...", "newsPositive": "...", "newsNegative": "" }
+  ]
+}
+```
+
+Scores must be 1-10 and tickers unique. Writing a month replaces that month's
+rows and leaves other months alone, so re-running a month is safe. Weight,
+amount, current price and result are formulas the script writes; they are not
+accepted from the request.
+
+Scores themselves come from the monthly research pass, not from arithmetic —
+this endpoint records a decision, it does not make one.
+
 ## Endpoints
 
 | Route | Purpose |
 |---|---|
 | `GET /api/health` | Liveness plus whether credentials are configured |
 | `GET /api/wealth` | Full app payload. `?month=2026-09` pins a month |
+| `POST /api/dca-scores` | Writes one month of DCA scores via Apps Script |
 | `POST /api/refresh` | Clears the cache so the next read hits Sheets |
 
 Responses are cached for `CACHE_TTL_SECONDS` (default 60) to stay well inside

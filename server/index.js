@@ -3,12 +3,14 @@ import express from 'express';
 import cors from 'cors';
 import { fetchSheetValues } from './sheets.js';
 import { mapSheetsToAppData } from './mapper.js';
+import { writeDcaScores } from './dca-writer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_SECONDS || 60) * 1000;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+app.use(express.json({ limit: '256kb' }));
 
 const cache = new Map();
 
@@ -33,6 +35,7 @@ app.get('/api/health', (_req, res) => {
         (process.env.GOOGLE_API_KEY ||
           (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY))
     ),
+    canWrite: Boolean(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_TOKEN),
     authMode: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
       ? 'service-account'
       : process.env.GOOGLE_API_KEY
@@ -50,6 +53,19 @@ app.get('/api/wealth', async (req, res) => {
   } catch (err) {
     console.error('[wealth] fetch failed:', err.message);
     res.status(502).json({ error: err.message });
+  }
+});
+
+// Writes one month of DCA scores into the sheet, then drops the cache so the
+// next read reflects them.
+app.post('/api/dca-scores', async (req, res) => {
+  try {
+    const result = await writeDcaScores(req.body ?? {});
+    cache.clear();
+    res.json(result);
+  } catch (err) {
+    console.error('[dca-scores] write failed:', err.message);
+    res.status(400).json({ ok: false, error: err.message });
   }
 });
 
