@@ -135,10 +135,21 @@ function replaceMonth(sheet, month, rows) {
   return values.length;
 }
 
-/** "2026-09-01", a Date, or a serial all reduce to "2026-09". */
+/**
+ * "2026-09-01", a Date, or a serial all reduce to "2026-09".
+ *
+ * Dates read back from cells must be formatted in the SPREADSHEET's timezone,
+ * not the script's. The two differ by default, and a date written as
+ * 2000-01-01 then read in another zone lands on 1999-12 — the month stops
+ * matching itself, the old rows survive, and every re-run doubles the month.
+ */
 function monthKey(v) {
   if (v instanceof Date) {
-    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM');
+    const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+    return Utilities.formatDate(v, tz, 'yyyy-MM');
+  }
+  if (typeof v === 'number') {
+    return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 7);
   }
   const s = String(v || '').trim();
   return s.length >= 7 ? s.slice(0, 7) : s;
