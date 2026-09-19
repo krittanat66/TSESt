@@ -142,3 +142,32 @@ function monthKey(v) {
   const s = String(v || '').trim();
   return s.length >= 7 ? s.slice(0, 7) : s;
 }
+
+/**
+ * Run this from the Apps Script editor to check the whole write path without
+ * a terminal: pick testWrite in the function dropdown and press Run, then
+ * look at 20_DCA_SCORE. It writes to month 2000-01 so real months are never
+ * touched; delete those rows afterwards, or leave them — the app only ever
+ * shows the current month.
+ */
+function testWrite() {
+  const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
+  if (!token) throw new Error('Script Property TOKEN is not set.');
+
+  const res = doPost({
+    postData: {
+      contents: JSON.stringify({
+        token: token,
+        month: '2000-01-01',
+        rows: [
+          { ticker: 'TEST-A', score: 8, buyPrice: 100,
+            reason: 'ทดสอบคะแนนสูง', newsPositive: 'ข่าวบวกตัวอย่าง', newsNegative: '' },
+          { ticker: 'TEST-B', score: 2, buyPrice: 50,
+            reason: 'ทดสอบคะแนนต่ำ', newsPositive: '', newsNegative: 'ข่าวลบตัวอย่าง' },
+        ],
+      }),
+    },
+  });
+
+  Logger.log(res.getContent());
+}
