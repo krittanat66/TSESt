@@ -107,6 +107,10 @@ function replaceMonth(sheet, month, rows) {
     r.note || '',
   ]));
 
+  // The month column is forced to text before the write. Held as a date it
+  // round-trips through timezones and stops matching itself, so replaceMonth
+  // never found the rows it was meant to replace and every run appended.
+  sheet.getRange(startRow, 2, values.length, 1).setNumberFormat('@');
   sheet.getRange(startRow, 2, values.length, HEADERS.length).setValues(values);
 
   // Plain ranges rather than tblSettings/tblPrice: structured references did
@@ -130,7 +134,6 @@ function replaceMonth(sheet, month, rows) {
 
   sheet.getRange(startRow, 5, values.length, 1).setNumberFormat('0.0%');
   sheet.getRange(startRow, 12, values.length, 1).setNumberFormat('0.0%');
-  sheet.getRange(startRow, 2, values.length, 1).setNumberFormat('yyyy-mm-dd');
 
   return values.length;
 }
@@ -182,4 +185,39 @@ function testWrite() {
   });
 
   Logger.log(res.getContent());
+}
+
+/**
+ * Prints what replaceMonth actually sees, so a mismatch can be read off the
+ * log instead of guessed at. Run it from the editor and check Execution log.
+ */
+function debugMonths() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB);
+  if (!sheet) { Logger.log('no tab ' + TAB); return; }
+
+  const lastRow = sheet.getLastRow();
+  Logger.log('lastRow=' + lastRow + '  target=' + monthKey('2000-01-01'));
+  if (lastRow < FIRST_DATA_ROW) { Logger.log('no data rows'); return; }
+
+  const vals = sheet.getRange(FIRST_DATA_ROW, 2, lastRow - FIRST_DATA_ROW + 1, 2).getValues();
+  vals.forEach(function (row, i) {
+    Logger.log(
+      'row ' + (FIRST_DATA_ROW + i) +
+      ' | ticker=' + row[1] +
+      ' | raw=' + row[0] +
+      ' | type=' + (row[0] instanceof Date ? 'Date' : typeof row[0]) +
+      ' | key=' + monthKey(row[0]) +
+      ' | match=' + (monthKey(row[0]) === monthKey('2000-01-01'))
+    );
+  });
+}
+
+/** Wipes every data row in the tab. Use to start clean after a bad run. */
+function clearAllRows() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB);
+  if (!sheet) { Logger.log('no tab ' + TAB); return; }
+  const lastRow = sheet.getLastRow();
+  if (lastRow < FIRST_DATA_ROW) { Logger.log('already empty'); return; }
+  sheet.deleteRows(FIRST_DATA_ROW, lastRow - FIRST_DATA_ROW + 1);
+  Logger.log('cleared ' + (lastRow - FIRST_DATA_ROW + 1) + ' rows');
 }
