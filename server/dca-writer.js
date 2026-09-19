@@ -57,9 +57,13 @@ export async function writeDcaScores({ month, rows }) {
   try {
     payload = JSON.parse(text);
   } catch {
-    // A login page instead of JSON means the deployment is not public.
+    // Anything but JSON means the call never reached doPost. A 403 is either
+    // a deployment that is not "Anyone" access, or a network that blocks
+    // script.google.com — the two look identical from here, so name both.
     throw new Error(
-      `Apps Script did not return JSON (HTTP ${res.status}). Check the deployment is "Anyone" access.`
+      `Apps Script did not return JSON (HTTP ${res.status}). Either the ` +
+        'deployment is not set to "Anyone" access, or this host cannot reach ' +
+        'script.google.com.'
     );
   }
 
