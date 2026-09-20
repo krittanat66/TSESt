@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useWealth } from '../data/WealthContext';
 
 export function PasscodeGate() {
-  const { unlock } = useWealth();
+  const { unlock, error } = useWealth();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -37,7 +37,14 @@ export function PasscodeGate() {
             focus:border-cyan focus:ring-1 focus:ring-cyan"
         />
 
-        {failed && <p className="text-coral text-xs mt-2">รหัสผ่านไม่ถูกต้อง</p>}
+        {error === 'server-unconfigured' ? (
+          <p className="text-coral text-xs mt-2">
+            เซิร์ฟเวอร์ยังไม่ได้ตั้งรหัสผ่าน (APP_PASSCODE) — ใส่รหัสยังไงก็ยังเข้าไม่ได้
+            จนกว่าจะตั้งค่าในฝั่งเซิร์ฟเวอร์
+          </p>
+        ) : (
+          failed && <p className="text-coral text-xs mt-2">รหัสผ่านไม่ถูกต้อง</p>
+        )}
 
         <button
           type="submit"

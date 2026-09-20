@@ -40,9 +40,17 @@ export function WealthProvider({ children }) {
         headers: code ? { Authorization: `Bearer ${code}` } : {},
       });
 
-      if (res.status === 401 || res.status === 503) {
-        // Wrong or missing passcode is not a failure to fall back from — the
-        // viewer needs to be asked, not shown someone else's sample numbers.
+      // 503 means the server has no passcode configured, so no passcode can
+      // ever work. Showing that as "wrong passcode" sends the viewer round a
+      // loop they cannot get out of, so the two are kept apart.
+      if (res.status === 503) {
+        writePasscode('');
+        setLocked(true);
+        setIsLive(false);
+        setError('server-unconfigured');
+        return false;
+      }
+      if (res.status === 401) {
         writePasscode('');
         setLocked(true);
         setIsLive(false);
