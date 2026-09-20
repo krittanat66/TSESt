@@ -67,6 +67,13 @@ app.get('/api/health', (_req, res) => {
     ),
     canWrite: Boolean(process.env.APPS_SCRIPT_URL && process.env.APPS_SCRIPT_TOKEN),
     locked: Boolean(process.env.APP_PASSCODE),
+    // Length only, never the value or a hash of it: enough to tell "the
+    // variable holds something other than what I typed" apart from "I typed
+    // it wrong", which is the whole of a failed login from outside.
+    passcodeLength: (process.env.APP_PASSCODE || '').trim().length,
+    passcodeHadSpaces:
+      (process.env.APP_PASSCODE || '').length !==
+      (process.env.APP_PASSCODE || '').trim().length,
     authMode: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
       ? 'service-account'
       : process.env.GOOGLE_API_KEY
