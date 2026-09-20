@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWealth } from '../data/WealthContext';
 
 export function PasscodeGate() {
@@ -6,6 +6,18 @@ export function PasscodeGate() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [health, setHealth] = useState(null);
+
+  // /api/health needs no passcode. Reading it here puts the one fact that
+  // separates "I typed it wrong" from "the server holds something else" on
+  // the screen where the login fails, instead of behind a URL nobody thinks
+  // to open while locked out.
+  useEffect(() => {
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then(setHealth)
+      .catch(() => setHealth(null));
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -14,6 +26,9 @@ export function PasscodeGate() {
     setFailed(!(await unlock(code.trim())));
     setBusy(false);
   };
+
+  const expected = health?.passcodeLength;
+  const mismatch = failed && typeof expected === 'number' && expected !== code.trim().length;
 
   return (
     <div className="min-h-screen bg-bg-primary flex items-center justify-center px-6">
@@ -30,6 +45,9 @@ export function PasscodeGate() {
             setFailed(false);
           }}
           autoFocus
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck="false"
           autoComplete="current-password"
           placeholder="รหัสผ่าน"
           className="w-full bg-bg-card border border-border-soft rounded-lg px-4 py-3
@@ -43,7 +61,17 @@ export function PasscodeGate() {
             จนกว่าจะตั้งค่าในฝั่งเซิร์ฟเวอร์
           </p>
         ) : (
-          failed && <p className="text-coral text-xs mt-2">รหัสผ่านไม่ถูกต้อง</p>
+          failed && (
+            <p className="text-coral text-xs mt-2">
+              รหัสผ่านไม่ถูกต้อง
+              {mismatch && (
+                <>
+                  {' '}— เซิร์ฟเวอร์เก็บรหัสยาว <b>{expected}</b> ตัว แต่คุณพิมพ์{' '}
+                  <b>{code.trim().length}</b> ตัว
+                </>
+              )}
+            </p>
+          )
         )}
 
         <button
@@ -54,6 +82,12 @@ export function PasscodeGate() {
         >
           {busy ? 'กำลังตรวจสอบ…' : 'เข้าสู่ระบบ'}
         </button>
+
+        {health && (
+          <p className="text-text-tertiary text-[11px] mt-4 text-center">
+            เซิร์ฟเวอร์ตั้งรหัสไว้ {health.passcodeLength || 0} ตัวอักษร
+          </p>
+        )}
       </form>
     </div>
   );

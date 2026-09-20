@@ -33,8 +33,12 @@ function AppShell() {
   const { locked, loading } = useWealth();
   const [activeTab, setActiveTab] = useState('home');
 
-  if (loading) return <div className="min-h-screen bg-bg-primary" />;
+  // The gate is checked before the loading blank, because checking a passcode
+  // sets loading: swapping it out mid-check unmounted the gate and remounted
+  // it empty, so a rejected passcode cleared the field and showed nothing at
+  // all. It keeps its own busy state instead.
   if (locked) return <PasscodeGate />;
+  if (loading) return <div className="min-h-screen bg-bg-primary" />;
 
   const renderScreen = () => {
     switch (activeTab) {
