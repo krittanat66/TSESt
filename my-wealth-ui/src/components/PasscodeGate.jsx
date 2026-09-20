@@ -6,6 +6,7 @@ export function PasscodeGate() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [show, setShow] = useState(false);
   const [health, setHealth] = useState(null);
 
   // /api/health needs no passcode. Reading it here puts the one fact that
@@ -27,8 +28,14 @@ export function PasscodeGate() {
     setBusy(false);
   };
 
+  const typed = code.trim();
   const expected = health?.passcodeLength;
-  const mismatch = failed && typeof expected === 'number' && expected !== code.trim().length;
+  const lengthGap = failed && typeof expected === 'number' && expected !== typed.length;
+
+  // A phone keyboard left in Thai turns "Louis1" into Thai letters, and a
+  // masked field hides that completely — the passcode simply never works and
+  // nothing on screen says why.
+  const nonAscii = [...typed].filter((c) => c.charCodeAt(0) > 127);
 
   return (
     <div className="min-h-screen bg-bg-primary flex items-center justify-center px-6">
@@ -36,24 +43,45 @@ export function PasscodeGate() {
         <h1 className="text-2xl font-bold text-white mb-1">MY WEALTH</h1>
         <p className="text-sm text-text-tertiary mb-6">ใส่รหัสผ่านเพื่อเปิดดูข้อมูล</p>
 
-        <input
-          id="passcode"
-          type="password"
-          value={code}
-          onChange={(e) => {
-            setCode(e.target.value);
-            setFailed(false);
-          }}
-          autoFocus
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck="false"
-          autoComplete="current-password"
-          placeholder="รหัสผ่าน"
-          className="w-full bg-bg-card border border-border-soft rounded-lg px-4 py-3
-            text-white placeholder:text-text-tertiary outline-none
-            focus:border-cyan focus:ring-1 focus:ring-cyan"
-        />
+        <div className="relative">
+          <input
+            id="passcode"
+            type={show ? 'text' : 'password'}
+            value={code}
+            onChange={(e) => {
+              setCode(e.target.value);
+              setFailed(false);
+            }}
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck="false"
+            autoComplete="off"
+            placeholder="รหัสผ่าน"
+            className="w-full bg-bg-card border border-border-soft rounded-lg pl-4 pr-16 py-3
+              text-white placeholder:text-text-tertiary outline-none font-mono tracking-wide
+              focus:border-cyan focus:ring-1 focus:ring-cyan"
+          />
+          <button
+            type="button"
+            onClick={() => setShow((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-cyan px-1 py-1"
+          >
+            {show ? 'ซ่อน' : 'ดู'}
+          </button>
+        </div>
+
+        <p className="text-text-tertiary text-[11px] mt-2">
+          พิมพ์ไปแล้ว {typed.length} ตัว
+          {typeof expected === 'number' && expected > 0 && ` · ต้องการ ${expected} ตัว`}
+        </p>
+
+        {nonAscii.length > 0 && (
+          <p className="text-gold text-xs mt-2">
+            เจอตัวอักษรไทย “{nonAscii.join('')}” — คีย์บอร์ดยังอยู่โหมดภาษาไทย
+            กดปุ่มลูกโลก 🌐 สลับเป็น English แล้วพิมพ์ใหม่
+          </p>
+        )}
 
         {error === 'server-unconfigured' ? (
           <p className="text-coral text-xs mt-2">
@@ -64,10 +92,10 @@ export function PasscodeGate() {
           failed && (
             <p className="text-coral text-xs mt-2">
               รหัสผ่านไม่ถูกต้อง
-              {mismatch && (
+              {lengthGap && (
                 <>
                   {' '}— เซิร์ฟเวอร์เก็บรหัสยาว <b>{expected}</b> ตัว แต่คุณพิมพ์{' '}
-                  <b>{code.trim().length}</b> ตัว
+                  <b>{typed.length}</b> ตัว
                 </>
               )}
             </p>
@@ -76,7 +104,7 @@ export function PasscodeGate() {
 
         <button
           type="submit"
-          disabled={busy || !code.trim()}
+          disabled={busy || !typed}
           className="w-full mt-4 bg-cyan text-bg-primary font-semibold rounded-lg py-3
             disabled:opacity-40 transition-opacity"
         >
