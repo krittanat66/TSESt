@@ -28,11 +28,14 @@ const cache = new Map();
  * deploy that forgets the env var is broken rather than public.
  */
 function requirePasscode(req, res, next) {
-  const expected = process.env.APP_PASSCODE;
+  // Trimmed both sides: a passcode pasted into a hosting dashboard often
+  // carries a trailing space or newline, and rejecting for that protects
+  // nothing while looking exactly like a wrong passcode.
+  const expected = (process.env.APP_PASSCODE || '').trim();
   if (!expected) {
     return res.status(503).json({ error: 'APP_PASSCODE is not set on the server.' });
   }
-  const given = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  const given = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
   // Hash both so the comparison never leaks the passcode's length.
   const digest = (v) => createHash('sha256').update(v).digest();
   if (!timingSafeEqual(digest(given), digest(expected))) {
