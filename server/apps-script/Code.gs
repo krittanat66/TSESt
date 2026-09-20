@@ -247,3 +247,28 @@ function applyOpsFromDrive() {
   Logger.log('ใส่ ' + n + ' ช่อง');
   return n;
 }
+
+/**
+ * Render's free plan sleeps a service after ~15 minutes with no traffic, and
+ * the next visit waits out a cold start. Pinging the open health route keeps
+ * it awake; /api/health needs no passcode, so nothing is exposed by this.
+ *
+ * Set the Script Property APP_URL to the deployed origin, then run
+ * installKeepAwakeTrigger once.
+ */
+function keepAwake() {
+  var base = PropertiesService.getScriptProperties().getProperty('APP_URL');
+  if (!base) throw new Error('Set the Script Property APP_URL first.');
+  var res = UrlFetchApp.fetch(base.replace(/\/+$/, '') + '/api/health', {
+    muteHttpExceptions: true,
+  });
+  Logger.log('keepAwake: ' + res.getResponseCode());
+}
+
+function installKeepAwakeTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(function (t) { return t.getHandlerFunction() === 'keepAwake'; })
+    .forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('keepAwake').timeBased().everyMinutes(10).create();
+  Logger.log('keepAwake will run every 10 minutes.');
+}
