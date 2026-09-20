@@ -74,6 +74,9 @@ app.get('/api/health', (_req, res) => {
     passcodeHadSpaces:
       (process.env.APP_PASSCODE || '').length !==
       (process.env.APP_PASSCODE || '').trim().length,
+    // Which commit is actually running. Without it there is no way to tell a
+    // fix that did not work from a fix that never reached the server.
+    commit: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7),
     authMode: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
       ? 'service-account'
       : process.env.GOOGLE_API_KEY

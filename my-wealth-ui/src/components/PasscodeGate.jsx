@@ -124,6 +124,7 @@ export function PasscodeGate() {
         {health && (
           <p className="text-text-tertiary text-[11px] mt-4 text-center">
             เซิร์ฟเวอร์ตั้งรหัสไว้ {health.passcodeLength || 0} ตัวอักษร
+            {health.commit && <> · เวอร์ชัน {health.commit}</>}
           </p>
         )}
       </form>
