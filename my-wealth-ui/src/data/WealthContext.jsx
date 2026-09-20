@@ -48,16 +48,23 @@ export function WealthProvider({ children }) {
         setLocked(true);
         setIsLive(false);
         setError('server-unconfigured');
-        return false;
+        return 'unconfigured';
       }
       if (res.status === 401) {
         writePasscode('');
         setLocked(true);
         setIsLive(false);
         setError(null);
-        return false;
+        return 'unauthorized';
       }
-      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+      // Anything else is the sheet read failing behind an accepted passcode.
+      // Reported as a rejected passcode it sends the viewer to change a
+      // passcode that was right all along, so the server's own message is
+      // carried through instead.
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Server responded ${res.status}`);
+      }
 
       const live = await res.json();
       if (passcode) writePasscode(passcode);
@@ -65,13 +72,13 @@ export function WealthProvider({ children }) {
       setIsLive(true);
       setLocked(false);
       setError(null);
-      return true;
+      return 'ok';
     } catch (err) {
       // The sheet is the source of truth, but the UI stays usable without it.
       setData(mockData);
       setIsLive(false);
       setError(err.message);
-      return false;
+      return 'sheet-error';
     } finally {
       setLoading(false);
     }

@@ -5,7 +5,7 @@ export function PasscodeGate() {
   const { unlock, error } = useWealth();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [result, setResult] = useState(null);
   const [show, setShow] = useState(false);
   const [health, setHealth] = useState(null);
 
@@ -24,13 +24,14 @@ export function PasscodeGate() {
     e.preventDefault();
     if (!code.trim() || busy) return;
     setBusy(true);
-    setFailed(!(await unlock(code.trim())));
+    setResult(await unlock(code.trim()));
     setBusy(false);
   };
 
   const typed = code.trim();
   const expected = health?.passcodeLength;
-  const lengthGap = failed && typeof expected === 'number' && expected !== typed.length;
+  const rejected = result === 'unauthorized';
+  const lengthGap = rejected && typeof expected === 'number' && expected !== typed.length;
 
   // A phone keyboard left in Thai turns "Louis1" into Thai letters, and a
   // masked field hides that completely — the passcode simply never works and
@@ -50,7 +51,7 @@ export function PasscodeGate() {
             value={code}
             onChange={(e) => {
               setCode(e.target.value);
-              setFailed(false);
+              setResult(null);
             }}
             autoFocus
             autoCapitalize="none"
@@ -83,23 +84,32 @@ export function PasscodeGate() {
           </p>
         )}
 
-        {error === 'server-unconfigured' ? (
+        {result === 'unconfigured' && (
           <p className="text-coral text-xs mt-2">
             เซิร์ฟเวอร์ยังไม่ได้ตั้งรหัสผ่าน (APP_PASSCODE) — ใส่รหัสยังไงก็ยังเข้าไม่ได้
             จนกว่าจะตั้งค่าในฝั่งเซิร์ฟเวอร์
           </p>
-        ) : (
-          failed && (
-            <p className="text-coral text-xs mt-2">
-              รหัสผ่านไม่ถูกต้อง
-              {lengthGap && (
-                <>
-                  {' '}— เซิร์ฟเวอร์เก็บรหัสยาว <b>{expected}</b> ตัว แต่คุณพิมพ์{' '}
-                  <b>{typed.length}</b> ตัว
-                </>
-              )}
+        )}
+
+        {rejected && (
+          <p className="text-coral text-xs mt-2">
+            รหัสผ่านไม่ถูกต้อง
+            {lengthGap && (
+              <>
+                {' '}— เซิร์ฟเวอร์เก็บรหัสยาว <b>{expected}</b> ตัว แต่คุณพิมพ์{' '}
+                <b>{typed.length}</b> ตัว
+              </>
+            )}
+          </p>
+        )}
+
+        {result === 'sheet-error' && (
+          <div className="text-xs mt-2 space-y-1">
+            <p className="text-gold">
+              <b>รหัสผ่านถูกต้องแล้ว</b> — แต่เซิร์ฟเวอร์อ่าน Google Sheet ไม่ได้
             </p>
-          )
+            <p className="text-text-tertiary break-words">{error}</p>
+          </div>
         )}
 
         <button
