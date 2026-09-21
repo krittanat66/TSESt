@@ -33,20 +33,26 @@ export function MonthlyScreen() {
   const { data } = useWealth();
   const { monthly, dashboard } = data;
 
-  const income = monthly.income.actual;
-  const expense = monthly.expense.actual;
-  const saving = monthly.saving.actual;
-  const invest = monthly.investment.actual;
-  const pvd = monthly.pvd?.employee ?? 0;
-
-  // With no Actual columns entered, Remaining Cash is a negative made of
-  // blanks. The plan is shown instead, labelled as the plan.
+  // Every Actual column but the investment one is blank, so an actuals walk
+  // subtracts a real investment from a zero income and lands on a negative
+  // that describes the sheet, not the month. When that is the case the whole
+  // screen runs on the plan, which is the only internally consistent set of
+  // figures the month has.
   const unrecorded = dashboard.monthUnrecorded;
+
+  const income = unrecorded ? monthly.income.plan : monthly.income.actual;
+  const expense = unrecorded ? monthly.expense.plan : monthly.expense.actual;
+  const saving = unrecorded ? 0 : monthly.saving.actual;
+  const invest = unrecorded ? monthly.investment.plan : monthly.investment.actual;
+
+  // The plan deducts the provident fund before landing on Remaining Cash
+  // (Plan), so the walk has to carry it to reconcile with the sheet.
+  const pvd = monthly.pvdDeducted || monthly.pvd?.employee || 0;
+  const pvdInWalk = unrecorded ? pvd : 0;
+
   const remaining = unrecorded ? dashboard.remainingCashPlan : dashboard.remainingCash;
   const overspent = remaining < 0;
-  // PVD is deliberately absent from this walk: the contribution goes into the
-  // fund without ever being spendable, so it belongs under assets, not here.
-  const computed = income - expense - saving - invest;
+  const computed = income - expense - saving - invest - pvdInWalk;
 
   // Saving and investing are not losses, but they do leave the spendable pot,
   // so a month can read negative with nothing wasted. Naming the largest
@@ -69,42 +75,43 @@ export function MonthlyScreen() {
 
       <div className="px-4 py-4 space-y-6">
         <div className="space-y-3">
-          <h2 className="text-white font-bold">สรุปเดือนนี้</h2>
+          <h2 className="text-white font-bold">
+            {unrecorded ? 'สรุปเดือนนี้ (ตามแผน)' : 'สรุปเดือนนี้'}
+          </h2>
+          {unrecorded && (
+            <p className="text-warning text-xs">
+              ช่อง Actual ของเดือนนี้ยังว่างในชีต 02_MONTHLY ทุกตัวเลขด้านล่างจึงเป็นแผน ไม่ใช่ของจริง
+            </p>
+          )}
 
           <SummaryCard label="รายรับ" actual={income} plan={monthly.income.plan} />
           <SummaryCard label="รายจ่าย" actual={expense} plan={monthly.expense.plan} />
-          <SummaryCard
-            label="เงินออม"
-            actual={saving}
-            plan={monthly.saving.plan}
-            valueClass="text-emerald"
-          />
+          {!unrecorded && (
+            <SummaryCard label="เงินออม" actual={saving} valueClass="text-emerald" />
+          )}
           <SummaryCard label="เงินลงทุน" actual={invest} plan={monthly.investment.plan} />
           <SummaryCard
             label={unrecorded ? 'เงินเหลือใช้ (ตามแผน)' : 'เงินเหลือใช้'}
             actual={remaining}
             valueClass={overspent ? 'text-coral' : 'text-white'}
-            note={
-              unrecorded
-                ? 'ยังไม่ได้กรอกรายรับ/รายจ่ายจริงของเดือนนี้ จึงแสดงตัวเลขตามแผนไว้ก่อน'
-                : overspent
-                  ? 'เดือนนี้เงินออกมากกว่าเงินเข้า — ดูรายละเอียดด้านล่าง'
-                  : null
-            }
+            note={overspent ? 'เดือนนี้เงินออกมากกว่าเงินเข้า — ดูรายละเอียดด้านล่าง' : null}
           />
         </div>
 
-        <div className="space-y-3">
-          <h2 className="text-white font-bold">แผน vs จริง</h2>
-          <ProgressBar label="รายรับ" actual={income} plan={monthly.income.plan} color="cyan" />
-          <ProgressBar label="รายจ่าย" actual={expense} plan={monthly.expense.plan} color="coral" />
-          <ProgressBar label="เงินออม" actual={saving} plan={monthly.saving.plan} color="emerald" />
-        </div>
+        {!unrecorded && (
+          <div className="space-y-3">
+            <h2 className="text-white font-bold">แผน vs จริง</h2>
+            <ProgressBar label="รายรับ" actual={monthly.income.actual} plan={monthly.income.plan} color="cyan" />
+            <ProgressBar label="รายจ่าย" actual={monthly.expense.actual} plan={monthly.expense.plan} color="coral" />
+          </div>
+        )}
 
         <CashFlowChart income={income} expense={expense} saving={saving} />
 
         <div className="bg-bg-card rounded-lg p-4 border border-border-soft">
-          <h3 className="text-white font-bold mb-1">เงินหายไปไหน</h3>
+          <h3 className="text-white font-bold mb-1">
+            {unrecorded ? 'เงินหายไปไหน (ตามแผน)' : 'เงินหายไปไหน'}
+          </h3>
           <p className="text-text-tertiary text-xs mb-3">
             ไล่จากรายรับ หักทุกอย่างที่ออกจากกระเป๋าเงินสด
           </p>
@@ -112,8 +119,9 @@ export function MonthlyScreen() {
           <div className="space-y-2">
             <BreakdownRow label="รายรับ" sign="+" amount={income} />
             <BreakdownRow label="รายจ่าย" sign="−" amount={expense} />
-            <BreakdownRow label="กันไปเป็นเงินออม" sign="−" amount={saving} />
+            {saving > 0 && <BreakdownRow label="กันไปเป็นเงินออม" sign="−" amount={saving} />}
             <BreakdownRow label="กันไปลงทุน" sign="−" amount={invest} />
+            {pvdInWalk > 0 && <BreakdownRow label="PVD หัก 15%" sign="−" amount={pvdInWalk} />}
 
             <div className="flex items-center justify-between pt-3 mt-1 border-t border-border-soft">
               <span className="text-white font-bold">คงเหลือ (คำนวณ)</span>
@@ -123,7 +131,7 @@ export function MonthlyScreen() {
             </div>
           </div>
 
-          {pvd > 0 && (
+          {pvd > 0 && !unrecorded && (
             <div className="mt-4 pt-3 border-t border-border-soft">
               <div className="flex items-center justify-between">
                 <span className="text-text-secondary text-sm">PVD เข้ากองทุน</span>
@@ -140,13 +148,6 @@ export function MonthlyScreen() {
               ก้อนที่กินเงินมากที่สุดเดือนนี้คือ{' '}
               <span className="text-white font-bold">{top.label}</span> {formatCurrency(top.amount)}{' '}
               (คิดเป็น {Math.round((top.amount / income) * 100)}% ของรายรับ)
-            </p>
-          )}
-
-          {unrecorded && (
-            <p className="text-warning text-xs mt-3">
-              ช่อง Actual ของ รายรับ / รายจ่าย / เงินออม ยังว่างอยู่ในชีต 02_MONTHLY มีแต่เงินลงทุน
-              ที่กรอกไว้ ยอดคงเหลือจึงกลายเป็นลบ — ไม่ใช่ว่าใช้เงินเกิน
             </p>
           )}
 
