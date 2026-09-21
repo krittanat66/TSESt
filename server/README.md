@@ -200,3 +200,33 @@ npm test
 Runs the mapper against fixtures shaped like the real tabs and asserts on month
 selection, closed-position exclusion, placeholder handling and trend maths. No
 credentials needed.
+
+## LINE → 16_INBOX
+
+Messages sent to the LINE bot land in `16_INBOX` with Status `Need Review`.
+Nothing reaches `04_TRANSACTIONS` from a chat message — a misread one that
+booked itself would be worse than one that waits to be confirmed.
+
+```
+LINE → POST /api/line-webhook → Apps Script → 16_INBOX → (review) → 04_TRANSACTIONS
+```
+
+Message format is `<what> <amount>`, e.g. `ข้าว 120`, `ค่าไฟ 1,250`,
+`เงินเดือน 18945`. The largest number in the message is taken as the amount,
+so `ข้าว 2 จาน 120` records 120. Categories map onto `05_CATEGORIES` and fall
+back to `Other`; a message that matched no category word is still recorded,
+marked `Low` confidence so review sees it first. A message with no number at
+all is kept as raw text with the same status.
+
+### Setup
+
+1. LINE Developers console → create a Messaging API channel.
+2. Copy the **Channel secret** into `LINE_CHANNEL_SECRET` and the **Channel
+   access token** into `LINE_CHANNEL_ACCESS_TOKEN`.
+3. Set the webhook URL to `https://<your-host>/api/line-webhook` and enable
+   "Use webhook". Turn **off** auto-reply messages.
+4. Redeploy the Apps Script Web App so it picks up `appendInbox`.
+
+Without `LINE_CHANNEL_SECRET` the route returns 503 and accepts nothing: the
+signature is the only thing standing between the endpoint and anyone who
+finds the URL, so it fails closed rather than open.

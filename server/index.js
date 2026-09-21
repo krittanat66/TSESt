@@ -8,13 +8,24 @@ import cors from 'cors';
 import { fetchSheetValues } from './sheets.js';
 import { mapSheetsToAppData } from './mapper.js';
 import { writeDcaScores } from './dca-writer.js';
+import { verifySignature, buildInboxRows, replyText } from './line-webhook.js';
+import { writeInboxRows, replyToLine } from './line-writer.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_SECONDS || 60) * 1000;
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
-app.use(express.json({ limit: '256kb' }));
+// LINE signs the exact bytes it sent, so the raw body has to survive JSON
+// parsing for the signature to be checkable at all.
+app.use(
+  express.json({
+    limit: '256kb',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 const cache = new Map();
 
@@ -108,6 +119,40 @@ app.post('/api/dca-scores', requirePasscode, async (req, res) => {
     console.error('[dca-scores] write failed:', err.message);
     res.status(400).json({ ok: false, error: err.message });
   }
+});
+
+/**
+ * LINE Messaging API webhook. Guarded by LINE's own signature rather than the
+ * app passcode, because LINE is the caller and has no way to send one.
+ *
+ * Messages land in 16_INBOX with Status "Need Review" and go no further — a
+ * misread chat message must never book itself into 04_TRANSACTIONS.
+ */
+app.post('/api/line-webhook', async (req, res) => {
+  const secret = process.env.LINE_CHANNEL_SECRET;
+  if (!secret) {
+    return res.status(503).json({ error: 'LINE_CHANNEL_SECRET is not set on the server.' });
+  }
+  if (!verifySignature(req.rawBody ?? Buffer.from(''), req.get('x-line-signature'), secret)) {
+    return res.status(401).json({ error: 'bad signature' });
+  }
+
+  // LINE retries anything that is not answered quickly, which would duplicate
+  // rows. The delivery is acknowledged first and the write runs after.
+  res.json({ ok: true });
+
+  const rows = buildInboxRows(req.body?.events);
+  if (!rows.length) return undefined;
+
+  try {
+    await writeInboxRows(rows.filter((r) => !r.error).concat(rows.filter((r) => r.error)));
+    cache.clear();
+  } catch (err) {
+    console.error('line-webhook: write failed', err.message);
+  }
+
+  await Promise.all(rows.map((r) => replyToLine(r.replyToken, replyText(r))));
+  return undefined;
 });
 
 app.post('/api/refresh', requirePasscode, (_req, res) => {

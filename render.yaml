@@ -33,10 +33,18 @@ services:
       - key: APP_PASSCODE
         sync: false
 
-      # Only needed for writing DCA scores back through the Apps Script Web App.
+      # Needed for writing DCA scores and LINE inbox rows back through the
+      # Apps Script Web App.
       - key: APPS_SCRIPT_URL
         sync: false
       - key: APPS_SCRIPT_TOKEN
+        sync: false
+
+      # LINE Messaging API. Without the secret /api/line-webhook refuses every
+      # delivery, so the endpoint is closed until this is set.
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
         sync: false
 
       - key: CACHE_TTL_SECONDS

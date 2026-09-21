@@ -24,6 +24,8 @@ const HEADERS = [
   'Reason', 'News (+)', 'News (-)', 'Current Price', 'Result %', 'Note',
 ];
 
+const INBOX_TAB = '16_INBOX';
+
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -32,6 +34,23 @@ function doPost(e) {
     if (!expected || body.token !== expected) {
       return reply({ ok: false, error: 'unauthorized' });
     }
+
+    // Two kinds of write share this endpoint: monthly DCA scores, and rows
+    // arriving from LINE. The latter only ever lands in 16_INBOX with a
+    // review status — 04_TRANSACTIONS is never written from a chat message.
+    if (body.kind === 'inbox') {
+      if (!Array.isArray(body.rows) || !body.rows.length) {
+        return reply({ ok: false, error: 'rows array is required' });
+      }
+      var lock = LockService.getScriptLock();
+      lock.waitLock(30000);
+      try {
+        return reply({ ok: true, written: appendInbox(body.rows) });
+      } finally {
+        lock.releaseLock();
+      }
+    }
+
     if (!body.month || !Array.isArray(body.rows) || !body.rows.length) {
       return reply({ ok: false, error: 'month and a non-empty rows array are required' });
     }
@@ -159,6 +178,58 @@ function monthKey(v) {
 }
 
 
+
+/**
+ * Appends rows to 16_INBOX. IDs continue the tab's own INBOX-0000 sequence,
+ * read back each time rather than counted, so a manually added row does not
+ * cause a collision.
+ */
+function appendInbox(rows) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INBOX_TAB);
+  if (!sheet) throw new Error('no tab ' + INBOX_TAB);
+
+  var lastRow = sheet.getLastRow();
+  var nextNum = 1;
+  if (lastRow >= FIRST_DATA_ROW) {
+    var ids = sheet.getRange(FIRST_DATA_ROW, 2, lastRow - FIRST_DATA_ROW + 1, 1).getValues();
+    for (var i = 0; i < ids.length; i += 1) {
+      var m = String(ids[i][0] || '').match(/^INBOX-(\d+)$/);
+      if (m && Number(m[1]) >= nextNum) nextNum = Number(m[1]) + 1;
+    }
+  }
+
+  var startRow = Math.max(lastRow + 1, FIRST_DATA_ROW);
+  var today = new Date();
+
+  // Column order follows 16_INBOX's header row exactly (B..U).
+  var values = rows.map(function (r, i) {
+    return [
+      'INBOX-' + ('0000' + (nextNum + i)).slice(-4),
+      r.receivedAt ? new Date(r.receivedAt) : today,
+      r.source || 'LINE',
+      r.inputType || 'Text',
+      r.rawData || '',
+      r.aiResult || '',
+      r.transactionType || '',
+      r.amount === '' || r.amount == null ? '' : Number(r.amount),
+      r.currency || 'THB',
+      r.receivedAt ? new Date(r.receivedAt) : today,
+      r.account || '',
+      r.category || '',
+      r.asset || '',
+      r.quantity || '',
+      r.price || '',
+      r.confidence || 'Low',
+      r.status || 'Need Review',
+      '', // Reviewed By
+      '', // Review Date
+      '', // Linked TX ID
+    ];
+  });
+
+  sheet.getRange(startRow, 2, values.length, values[0].length).setValues(values);
+  return values.length;
+}
 
 /** Wipes every data row in the tab. Use to start clean after a bad run. */
 function clearAllRows() {
