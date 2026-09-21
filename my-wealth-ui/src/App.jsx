@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { WealthProvider, useWealth } from './data/WealthContext';
 import { BottomNavigation } from './components/Navigation';
 import { PasscodeGate } from './components/PasscodeGate';
+import { ScreenBoundary } from './components/ScreenBoundary';
 import { HomeScreen } from './screens/HomeScreen';
 import { MonthlyScreen } from './screens/MonthlyScreen';
 import { AccountsScreen } from './screens/AccountsScreen';
@@ -65,7 +66,7 @@ function AppShell() {
 
       {/* Mobile viewport */}
       <div className="max-w-md mx-auto bg-bg-primary relative">
-        {renderScreen()}
+        <ScreenBoundary screenKey={activeTab}>{renderScreen()}</ScreenBoundary>
         <BottomNavigation activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
 

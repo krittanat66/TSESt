@@ -14,6 +14,15 @@ export function HomeScreen() {
   const alerts = data.alerts;
   const netWorthHistory = data.netWorthHistory;
 
+  // This headline used to be a hardcoded "72% \u1f7e2 \u0e40\u0e07\u0e34\u0e19\u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e40\u0e1e\u0e35\u0e22\u0e07\u0e1e\u0e2d", which kept reading
+  // green while the cash below it was negative. It is the share of this
+  // month's income still unspent, so it tracks the figure it sits next to.
+  const cashRatio = dashboard.monthlyIncome
+    ? Math.round((dashboard.availableCash / dashboard.monthlyIncome) * 100)
+    : 0;
+  const cashOk = dashboard.availableCash >= 0;
+  const barWidth = Math.max(0, Math.min(100, cashRatio));
+
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
       {/* Header */}
@@ -27,29 +36,45 @@ export function HomeScreen() {
       <div className="px-4 py-4 space-y-6">
 
         {/* Available Cash Hero - Most Important */}
-        <div className="bg-gradient-to-br from-cyan/20 via-bg-elevated to-emerald/10 rounded-xl p-6 border border-cyan/30">
+        <div
+          className={`bg-gradient-to-br rounded-xl p-6 border ${
+            cashOk
+              ? 'from-cyan/20 via-bg-elevated to-emerald/10 border-cyan/30'
+              : 'from-coral/20 via-bg-elevated to-coral/5 border-coral/40'
+          }`}
+        >
           <div className="flex items-start justify-between mb-6">
             <div>
               <p className="text-text-secondary text-sm mb-2">เงินที่ใช้ได้ตอนนี้</p>
-              <p className="text-white text-5xl font-extrabold">
+              <p className={`text-5xl font-extrabold ${cashOk ? 'text-white' : 'text-coral'}`}>
                 {formatCurrency(dashboard.availableCash)}
               </p>
               <p className="text-text-tertiary text-sm mt-2">เงินเหลือจากแผนเดือนนี้</p>
             </div>
             <div className="text-right">
-              <p className="text-emerald font-bold text-lg">72%</p>
-              <p className="text-emerald text-sm">🟢 เงินเหลือเพียงพอ</p>
+              <p className={`font-bold text-lg ${cashOk ? 'text-emerald' : 'text-coral'}`}>
+                {cashRatio}%
+              </p>
+              <p className={`text-sm ${cashOk ? 'text-emerald' : 'text-coral'}`}>
+                {cashOk ? '🟢 เงินเหลือเพียงพอ' : '🔴 ใช้เกินรายรับ'}
+              </p>
             </div>
           </div>
 
-          {/* Progress bar */}
           <div className="space-y-2">
             <div className="w-full bg-bg-card rounded-full h-2 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-cyan to-emerald rounded-full"
-                style={{ width: '72%' }}
+                className={`h-full rounded-full ${
+                  cashOk ? 'bg-gradient-to-r from-cyan to-emerald' : 'bg-coral'
+                }`}
+                style={{ width: `${cashOk ? barWidth : 100}%` }}
               />
             </div>
+            {!cashOk && (
+              <p className="text-coral text-xs">
+                ตัวเลขนี้มาจากช่อง Remaining Cash (Actual) ในชีต 02_MONTHLY
+              </p>
+            )}
           </div>
         </div>
 
