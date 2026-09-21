@@ -71,10 +71,10 @@ console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidenc
 
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
 check(out.dashboard.netWorth === 240716, `netWorth: ${out.dashboard.netWorth}`);
-// Employee PVD is added back: the sheet deducts it from Remaining Cash, but it
-// goes into the fund rather than out of spendable cash. 4303 + 2700.
-check(out.dashboard.availableCash === 7003, `availableCash: ${out.dashboard.availableCash}`);
-check(out.dashboard.sheetRemainingCash === 4303, `sheetRemainingCash: ${out.dashboard.sheetRemainingCash}`);
+// Read straight from the sheet; the PVD deduction is dropped in the sheet's
+// own formula, not compensated for here.
+check(out.dashboard.availableCash === 4303, `availableCash: ${out.dashboard.availableCash}`);
+check(out.dashboard.employeePvd === 2700, `employeePvd: ${out.dashboard.employeePvd}`);
 check(Math.abs(out.dashboard.incomeChange - 8.7) < 0.2, `incomeChange: ${out.dashboard.incomeChange}`);
 
 // Serial dates must come out as ISO, not "17/9/2026" or an epoch number.

@@ -333,13 +333,12 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   // 02_MONTHLY carries its own Net Worth column; prefer it, fall back to 14_NET_WORTH.
   const netWorth = Math.round(num(current?.['Net Worth']) || latestNetWorth?.value || 0);
 
-  // The sheet's Remaining Cash subtracts Employee PVD, but that contribution
-  // never passes through spendable cash — it goes straight into the fund and
-  // shows up as an asset. Adding it back makes this figure mean what the
-  // dashboard calls it: what is left to spend.
+  // Remaining Cash no longer subtracts Employee PVD: that contribution goes
+  // into the fund without passing through spendable cash, so the sheet's
+  // formula drops it (ops-remaining-cash-no-pvd.json) and this reads the cell
+  // as-is rather than compensating here.
   const employeePvd = monthly.pvd.employee;
-  const sheetRemainingCash = money(current?.['Remaining Cash (Actual)']);
-  const remainingCash = money(sheetRemainingCash + employeePvd);
+  const remainingCash = money(current?.['Remaining Cash (Actual)']);
 
   const dashboard = {
     month: monthLabel(key),
@@ -356,12 +355,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     incomeChange: monthly.income.trend,
     expenseChange: monthly.expense.trend,
     savingChange: monthly.saving.trend,
-    remainingChange: pct(
-      remainingCash,
-      num(previous?.['Remaining Cash (Actual)']) + num(previous?.['Employee PVD'])
-    ),
-    // Kept so the app can show its own figure against the sheet's.
-    sheetRemainingCash,
+    remainingChange: pct(remainingCash, num(previous?.['Remaining Cash (Actual)'])),
     employeePvd,
     netWorthChange: prevNetWorth ? pct(netWorth, prevNetWorth.value) : 0,
   };
