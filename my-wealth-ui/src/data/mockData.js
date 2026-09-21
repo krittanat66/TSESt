@@ -40,6 +40,10 @@ export const mockData = {
       plan: 1000,
       trend: -100,
     },
+    pvd: {
+      employee: 2700,
+      employer: 2160,
+    },
   },
 
   // Accounts (from 03_ACCOUNTS)

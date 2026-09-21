@@ -122,6 +122,12 @@ function buildMonthly(current, previous) {
       trend: pct(num(current?.['Saving (Actual)']), num(previous?.['Saving (Actual)'])),
     },
     investment: metric('Investment (Actual)', 'Investment (Plan)'),
+    // Provident fund leaves the salary before it can be spent, so it belongs
+    // in any account of where the month's cash went.
+    pvd: {
+      employee: num(current?.['Employee PVD']),
+      employer: num(current?.['Employer PVD']),
+    },
   };
 }
 
