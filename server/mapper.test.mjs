@@ -90,10 +90,9 @@ console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidenc
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
 // 240,716 from the sheet plus the 64,114.51 fund position it leaves out.
 check(out.dashboard.netWorth === 304831, `netWorth: ${out.dashboard.netWorth}`);
-// The headline is what is left of the living budget: Daily Expenses 7000 +
-// Cat 2000, nothing spent yet. Parking, US Stocks and PVD are committed
-// elsewhere and stay out of it.
-check(out.dashboard.availableCash === 9000, `availableCash: ${out.dashboard.availableCash}`);
+// The headline is the day-to-day account's balance (ACC-SCB-02, ใช้จ่ายรายวัน).
+// The living budget rides alongside it rather than replacing it.
+check(out.dashboard.availableCash === 123.17, `availableCash: ${out.dashboard.availableCash}`);
 check(out.budget.dailyBudget === 9000, `dailyBudget: ${out.budget.dailyBudget}`);
 check(out.budget.committed === 8442, `committed: ${out.budget.committed}`);
 // Still carried, just no longer the headline.

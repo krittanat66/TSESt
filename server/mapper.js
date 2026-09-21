@@ -480,13 +480,12 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   // headline actually asks; the monthly cell stays available beside it.
   const cash = buildCashPosition(accounts);
 
-  // What is left of this month's living budget is the figure the headline
-  // promises. The day-to-day account's balance is only what happens to sit
-  // there right now — it read ฿123 while the budget still had thousands
-  // unspent, because the salary had not been moved across yet.
-  const availableCash = budget.categories.length
-    ? budget.dailyRemaining
-    : (cash.hasAccounts ? cash.daily : remainingCash);
+  // The headline is the balance of the day-to-day account: what is actually
+  // in hand to spend from. The month's budget is the larger allowance behind
+  // it and rides alongside rather than standing in for it.
+  const availableCash = cash.hasAccounts
+    ? cash.daily
+    : (budget.categories.length ? budget.dailyRemaining : remainingCash);
 
   const dashboard = {
     month: monthLabel(key),
