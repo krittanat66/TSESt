@@ -88,8 +88,8 @@ console.log('netWorthHistory:', out.netWorthHistory.map((n) => `${n.date}=${n.va
 console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidence}`).join(' | '));
 
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
-// 240,716 from the sheet plus the 58,431 fund it leaves out.
-check(out.dashboard.netWorth === 299147, `netWorth: ${out.dashboard.netWorth}`);
+// 240,716 from the sheet plus the 64,114.51 fund position it leaves out.
+check(out.dashboard.netWorth === 304831, `netWorth: ${out.dashboard.netWorth}`);
 // The headline is what is left of the living budget: Daily Expenses 7000 +
 // Cat 2000, nothing spent yet. Parking, US Stocks and PVD are committed
 // elsewhere and stay out of it.
@@ -102,11 +102,17 @@ check(out.dashboard.cash.topUp === 40414.98, `topUp: ${out.dashboard.cash.topUp}
 check(out.dashboard.remainingCash === 4303, `remainingCash: ${out.dashboard.remainingCash}`);
 check(out.dashboard.monthUnrecorded === false, `monthUnrecorded: ${out.dashboard.monthUnrecorded}`);
 // The fund is added on top of the sheet's own total, which omits it.
-check(out.dashboard.pvdBalance === 58431.01, `pvdBalance: ${out.dashboard.pvdBalance}`);
+// 58,431.01 in the fund plus September's 5,683.50 still in transit.
+check(out.dashboard.pvdBalance === 64114.51, `pvdBalance: ${out.dashboard.pvdBalance}`);
 check(out.dashboard.sheetNetWorth === 240716, `sheetNetWorth: ${out.dashboard.sheetNetWorth}`);
-check(out.dashboard.totalAssets === 305765, `totalAssets: ${out.dashboard.totalAssets}`);
-// Base pay, which appears nowhere else in the book.
-check(out.pvdFund.derivedSalary === 0, `derivedSalary: ${out.pvdFund.derivedSalary}`);
+check(out.dashboard.totalAssets === 311449, `totalAssets: ${out.dashboard.totalAssets}`);
+// September remitted nothing, so the standing base comes from August — the
+// zero is a batching gap, not a month without pay. 15% of 37,890 is the
+// batch, so the check is on the figures the sheet actually carries.
+check(out.pvdFund.baseSalary === 37890, `baseSalary: ${out.pvdFund.baseSalary}`);
+check(out.pvdFund.monthlyDeduction === 5683.5, `monthlyDeduction: ${out.pvdFund.monthlyDeduction}`);
+// September's deduction has left the payslip but not reached the fund.
+check(out.pvdFund.pendingRemittance === 5683.5, `pending: ${out.pvdFund.pendingRemittance}`);
 check(out.dashboard.employeePvd === 2700, `employeePvd: ${out.dashboard.employeePvd}`);
 check(Math.abs(out.dashboard.incomeChange - 8.7) < 0.2, `incomeChange: ${out.dashboard.incomeChange}`);
 
@@ -153,7 +159,7 @@ const zeroIncome = mapSheetsToAppData(investOnly);
 check(zeroIncome.dashboard.monthKey === '2026-09', `investment-only month: ${zeroIncome.dashboard.monthKey}`);
 // Net Worth column is empty in that sheet, so 14_NET_WORTH has to cover it —
 // plus the PVD balance, which no net-worth row carries.
-check(zeroIncome.dashboard.netWorth === 299147, `netWorth fallback: ${zeroIncome.dashboard.netWorth}`);
+check(zeroIncome.dashboard.netWorth === 304831, `netWorth fallback: ${zeroIncome.dashboard.netWorth}`);
 check(zeroIncome.dashboard.sheetNetWorth === 240716, `sheetNetWorth: ${zeroIncome.dashboard.sheetNetWorth}`);
 // A month with investment but no income recorded is unfilled, not overspent.
 check(

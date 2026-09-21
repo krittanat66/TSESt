@@ -39,6 +39,8 @@ export function WealthScreen() {
             {dashboard.pvdBalance > 0 && (
               <p className="text-text-tertiary text-xs mt-2">
                 รวม PVD {formatCurrency(dashboard.pvdBalance)}
+                {data.pvdFund?.pendingRemittance > 0 &&
+                  ` (รอนำส่ง ${formatCurrency(data.pvdFund.pendingRemittance)})`}
               </p>
             )}
           </div>

@@ -128,6 +128,9 @@ function buildMonthly(current, previous) {
       employee: num(current?.['Employee PVD']),
       employer: num(current?.['Employer PVD']),
     },
+    // Filled in from the standing deduction once the fund is known, because
+    // this column follows remittance rather than the payslip.
+    pvdDeducted: 0,
   };
 }
 
@@ -358,15 +361,33 @@ function buildPvdFund(rows, key) {
   const usable = upTo.length ? upTo : dated;
   const row = usable[usable.length - 1];
 
+  // Pay is docked every month, but the employer remits to the fund in
+  // batches, so 09_PVD shows ฿0 in some months and double in others. Those
+  // zeroes are unremitted months, not months without salary — reading them
+  // as income made the record look like pay had stopped. The latest month
+  // that names a salary gives the standing base to deduct from.
+  const withSalary = usable.filter((r) => num(r['Salary (derived)']) > 0);
+  const latestPaid = withSalary[withSalary.length - 1];
+  const baseSalary = num(latestPaid?.['Salary (derived)']);
+  const employeeRate = num(latestPaid?.['Employee %']) || 0.15;
+  const monthlyDeduction = money(baseSalary * employeeRate);
+
+  const balance =
+    money(row['Ending Balance (Reported)']) || money(row['Ending Balance (Calculated)']);
+
+  // A month whose deduction has left the payslip but not reached the fund is
+  // money already contributed; the balance alone understates it.
+  const remitted = monthKey(row.Month) === key && num(row['Employee Contribution']) > 0;
+
   return {
     month: monthKey(row.Month),
-    balance: money(row['Ending Balance (Reported)']) || money(row['Ending Balance (Calculated)']),
+    balance,
     employeeCum: money(row['Employee Cum.']),
     employerCum: money(row['Employer Cum.']),
     gain: money(row['Investment Gain/Loss']),
-    // The fund is computed off base pay, so it is the one place the real
-    // salary is recorded anywhere in the book.
-    derivedSalary: money(row['Salary (derived)']),
+    baseSalary,
+    monthlyDeduction,
+    pendingRemittance: remitted ? 0 : monthlyDeduction,
   };
 }
 
@@ -419,6 +440,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const dca = buildDca(rowsToObjects(raw.dca), key);
   const budget = buildBudget(rowsToObjects(raw.budget ?? []), key);
   const pvdFund = buildPvdFund(rowsToObjects(raw.pvd ?? []), key);
+  monthly.pvdDeducted = pvdFund?.monthlyDeduction ?? monthly.pvd.employee;
   const dcaScores = buildDcaScores(rowsToObjects(raw.dcaScore ?? []), key);
   const netWorthHistory = buildNetWorthHistory(rowsToObjects(raw.netWorth));
   const inbox = buildInbox(rowsToObjects(raw.inbox));
@@ -432,7 +454,9 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   // Neither of those totals includes the provident fund, because 14_NET_WORTH
   // records its PVD column as N/A. The fund is real money with a reconciled
   // balance, so leaving it out understates the position by its whole value.
-  const pvdBalance = pvdFund?.balance ?? 0;
+  // The balance is what reached the fund; a deduction still in transit is
+  // already the holder's money, so both belong in the position.
+  const pvdBalance = money((pvdFund?.balance ?? 0) + (pvdFund?.pendingRemittance ?? 0));
   const netWorth = Math.round(sheetNetWorth + pvdBalance);
 
   // Remaining Cash no longer subtracts Employee PVD: that contribution goes
