@@ -131,6 +131,42 @@ function buildMonthly(current, previous) {
   };
 }
 
+// Money sitting in a transactional account is spendable today; a savings or
+// investment account is money already committed to something. Splitting them
+// is what lets the dashboard answer "what can I spend" from balances that
+// exist, rather than from a monthly cell that is often still blank.
+const LIQUID_TYPES = new Set(['Bank', 'Cash']);
+
+// 03_ACCOUNTS marks the day-to-day account in its Purpose column. That one
+// account is the spending budget; salary, reserve and savings accounts hold
+// money that is not meant to be drawn on casually.
+function isDailyAccount(a) {
+  return /รายวัน/.test(a.purpose) || /daily/i.test(a.name);
+}
+
+function buildCashPosition(accounts) {
+  const live = accounts.filter((a) => a.status === 'Active' && a.currency === 'THB');
+  const sum = (list) => money(list.reduce((t, a) => t + a.availableBalance, 0));
+
+  const daily = live.filter(isDailyAccount);
+  const topUp = live.filter((a) => !isDailyAccount(a) && LIQUID_TYPES.has(a.type));
+  const reserved = live.filter((a) => !isDailyAccount(a) && a.type === 'Savings');
+
+  return {
+    daily: sum(daily),
+    dailyAccount: daily[0]?.name ?? '',
+    // Reachable in a transfer, but not this month's spending money.
+    topUp: sum(topUp),
+    reserved: sum(reserved),
+    // Non-THB balances are left out rather than converted: the mapper has no
+    // rate it can trust, and a wrong total is worse than a stated partial one.
+    excludedForeign: accounts.some(
+      (a) => a.status === 'Active' && a.currency !== 'THB' && a.availableBalance > 0
+    ),
+    hasAccounts: live.length > 0,
+  };
+}
+
 function buildAccounts(rows) {
   return rows
     // Footer notes land in the ID column; a real account also has a name.
@@ -141,6 +177,7 @@ function buildAccounts(rows) {
         name: str(r['Account Name']),
         institution: str(r.Institution),
         type: str(r['Account Type']),
+        purpose: str(r.Purpose),
         currency: str(r.Currency) || 'THB',
         balance: money(r['Current Balance']),
         availableBalance: money(r['Available Balance']) || money(r['Current Balance']),
@@ -340,10 +377,17 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const employeePvd = monthly.pvd.employee;
   const remainingCash = money(current?.['Remaining Cash (Actual)']);
 
+  // 02_MONTHLY's Remaining Cash goes negative whenever a month's Actual
+  // columns are still blank, because the investment figure is subtracted from
+  // nothing. Account balances are entered, so they answer the question the
+  // headline actually asks; the monthly cell stays available beside it.
+  const cash = buildCashPosition(accounts);
+  const availableCash = cash.hasAccounts ? cash.daily : remainingCash;
+
   const dashboard = {
     month: monthLabel(key),
     monthKey: key,
-    availableCash: remainingCash,
+    availableCash,
     netWorth,
     totalAssets: latestNetWorth?.totalAssets || netWorth,
     totalDebt: latestNetWorth?.debt || 0,
@@ -357,6 +401,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     savingChange: monthly.saving.trend,
     remainingChange: pct(remainingCash, num(previous?.['Remaining Cash (Actual)'])),
     employeePvd,
+    cash,
     netWorthChange: prevNetWorth ? pct(netWorth, prevNetWorth.value) : 0,
   };
 

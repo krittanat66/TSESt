@@ -14,14 +14,11 @@ export function HomeScreen() {
   const alerts = data.alerts;
   const netWorthHistory = data.netWorthHistory;
 
-  // This headline used to be a hardcoded "72% \u1f7e2 \u0e40\u0e07\u0e34\u0e19\u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e40\u0e1e\u0e35\u0e22\u0e07\u0e1e\u0e2d", which kept reading
-  // green while the cash below it was negative. It is the share of this
-  // month's income still unspent, so it tracks the figure it sits next to.
-  const cashRatio = dashboard.monthlyIncome
-    ? Math.round((dashboard.availableCash / dashboard.monthlyIncome) * 100)
-    : 0;
+  // This headline used to be a hardcoded 72% "เงินเหลือเพียงพอ", which kept
+  // reading green while the figure beside it was negative. It now shows the
+  // day-to-day account's balance, which is the money actually free to spend.
+  const cash = dashboard.cash;
   const cashOk = dashboard.availableCash >= 0;
-  const barWidth = Math.max(0, Math.min(100, cashRatio));
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
@@ -43,39 +40,35 @@ export function HomeScreen() {
               : 'from-coral/20 via-bg-elevated to-coral/5 border-coral/40'
           }`}
         >
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <p className="text-text-secondary text-sm mb-2">เงินที่ใช้ได้ตอนนี้</p>
-              <p className={`text-5xl font-extrabold ${cashOk ? 'text-white' : 'text-coral'}`}>
-                {formatCurrency(dashboard.availableCash)}
-              </p>
-              <p className="text-text-tertiary text-sm mt-2">เงินเหลือจากแผนเดือนนี้</p>
-            </div>
-            <div className="text-right">
-              <p className={`font-bold text-lg ${cashOk ? 'text-emerald' : 'text-coral'}`}>
-                {cashRatio}%
-              </p>
-              <p className={`text-sm ${cashOk ? 'text-emerald' : 'text-coral'}`}>
-                {cashOk ? '🟢 เงินเหลือเพียงพอ' : '🔴 ใช้เกินรายรับ'}
-              </p>
-            </div>
-          </div>
+          <p className="text-text-secondary text-sm mb-2">เงินที่ใช้ได้ตอนนี้</p>
+          <p className={`text-5xl font-extrabold ${cashOk ? 'text-white' : 'text-coral'}`}>
+            {formatCurrency(dashboard.availableCash)}
+          </p>
+          <p className="text-text-tertiary text-sm mt-2">
+            {cash?.dailyAccount || 'งบใช้จ่ายรายวัน'}
+          </p>
 
-          <div className="space-y-2">
-            <div className="w-full bg-bg-card rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${
-                  cashOk ? 'bg-gradient-to-r from-cyan to-emerald' : 'bg-coral'
-                }`}
-                style={{ width: `${cashOk ? barWidth : 100}%` }}
-              />
+          {cash?.hasAccounts && (
+            <div className="mt-5 pt-4 border-t border-border-soft space-y-2">
+              {cash.topUp > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">โอนมาเติมได้</span>
+                  <span className="text-white font-bold">{formatCurrency(cash.topUp)}</span>
+                </div>
+              )}
+              {cash.reserved > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">เงินกันไว้ (สำรอง / ออม)</span>
+                  <span className="text-text-tertiary font-bold">
+                    {formatCurrency(cash.reserved)}
+                  </span>
+                </div>
+              )}
+              {cash.excludedForeign && (
+                <p className="text-warning text-xs">ยังไม่รวมบัญชีสกุลเงินต่างประเทศ</p>
+              )}
             </div>
-            {!cashOk && (
-              <p className="text-coral text-xs">
-                ตัวเลขนี้มาจากช่อง Remaining Cash (Actual) ในชีต 02_MONTHLY
-              </p>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Monthly Summary - 2x2 Grid */}

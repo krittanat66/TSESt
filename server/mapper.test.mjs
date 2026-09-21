@@ -71,9 +71,11 @@ console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidenc
 
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
 check(out.dashboard.netWorth === 240716, `netWorth: ${out.dashboard.netWorth}`);
-// Read straight from the sheet; the PVD deduction is dropped in the sheet's
-// own formula, not compensated for here.
-check(out.dashboard.availableCash === 4303, `availableCash: ${out.dashboard.availableCash}`);
+// The headline is the day-to-day account alone (ACC-SCB-02, ใช้จ่ายรายวัน),
+// not every account that holds cash. Salary sits in top-up.
+check(out.dashboard.availableCash === 123.17, `availableCash: ${out.dashboard.availableCash}`);
+check(out.dashboard.cash.topUp === 40414.98, `topUp: ${out.dashboard.cash.topUp}`);
+check(out.dashboard.remainingCash === 4303, `remainingCash: ${out.dashboard.remainingCash}`);
 check(out.dashboard.employeePvd === 2700, `employeePvd: ${out.dashboard.employeePvd}`);
 check(Math.abs(out.dashboard.incomeChange - 8.7) < 0.2, `incomeChange: ${out.dashboard.incomeChange}`);
 
