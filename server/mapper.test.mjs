@@ -10,6 +10,17 @@ const raw = {
     [serial('2026-09-01'), 21745, 21745, 9000, 9500, 6842, 3293.58, 4000, 2700, 2160, 4303, 4303.25, 0.124, 0.151, 240716],
     [serial('2026-10-01'), 0, 21745, 0, 9500, 0, 0, 4000, 0, 0, 0, 4303.25, 0, 0, 0],
   ],
+  // 10_BUDGET, verbatim from the sheet: living categories plus the three that
+  // never pass through the wallet (payroll parking, DCA, PVD).
+  budget: [
+    ['Month','Category','Budget','Actual','Difference','Usage %','Status','Note'],
+    [serial('2026-09-01'), 'Daily Expenses', 7000, 0, 7000, 0, 'Normal', 'Fixed 1,200 + Variable 5,800'],
+    [serial('2026-09-01'), 'Cat', 2000, 0, 2000, 0, 'Normal', 'ค่าแมว'],
+    [serial('2026-09-01'), 'Parking', 1600, 0, 1600, 0, 'Normal', 'หักจากเงินเดือน'],
+    [serial('2026-09-01'), 'US Stocks', 3000, 0, 3000, 0, 'Normal', 'DCA หุ้นสหรัฐ'],
+    [serial('2026-09-01'), 'Investment Reserve', 1000, 0, 1000, 0, 'Normal', ''],
+    [serial('2026-09-01'), 'PVD', 2842, 0, 2842, 0, 'Normal', 'หักจากเงินเดือน 15%'],
+  ],
   // 03_ACCOUNTS lost its "Movement (TX)" column after the Sheets conversion.
   accounts: [
     ['Account ID','Account Name','Institution','Account Type','Currency','Purpose','Opening Balance','Opening Date','Current Balance','Reported Balance','Difference','Available Balance','Last Updated','Source','Data Status','Status'],
@@ -71,9 +82,14 @@ console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidenc
 
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
 check(out.dashboard.netWorth === 240716, `netWorth: ${out.dashboard.netWorth}`);
-// The headline is the day-to-day account alone (ACC-SCB-02, ใช้จ่ายรายวัน),
-// not every account that holds cash. Salary sits in top-up.
-check(out.dashboard.availableCash === 123.17, `availableCash: ${out.dashboard.availableCash}`);
+// The headline is what is left of the living budget: Daily Expenses 7000 +
+// Cat 2000, nothing spent yet. Parking, US Stocks and PVD are committed
+// elsewhere and stay out of it.
+check(out.dashboard.availableCash === 9000, `availableCash: ${out.dashboard.availableCash}`);
+check(out.budget.dailyBudget === 9000, `dailyBudget: ${out.budget.dailyBudget}`);
+check(out.budget.committed === 8442, `committed: ${out.budget.committed}`);
+// Still carried, just no longer the headline.
+check(out.dashboard.cash.daily === 123.17, `cash.daily: ${out.dashboard.cash.daily}`);
 check(out.dashboard.cash.topUp === 40414.98, `topUp: ${out.dashboard.cash.topUp}`);
 check(out.dashboard.remainingCash === 4303, `remainingCash: ${out.dashboard.remainingCash}`);
 check(out.dashboard.employeePvd === 2700, `employeePvd: ${out.dashboard.employeePvd}`);

@@ -18,7 +18,11 @@ export function HomeScreen() {
   // reading green while the figure beside it was negative. It now shows the
   // day-to-day account's balance, which is the money actually free to spend.
   const cash = dashboard.cash;
+  const budget = data.budget;
   const cashOk = dashboard.availableCash >= 0;
+  const usedPct = budget?.dailyBudget
+    ? Math.round((budget.dailySpent / budget.dailyBudget) * 100)
+    : 0;
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
@@ -44,30 +48,58 @@ export function HomeScreen() {
           <p className={`text-5xl font-extrabold ${cashOk ? 'text-white' : 'text-coral'}`}>
             {formatCurrency(dashboard.availableCash)}
           </p>
-          <p className="text-text-tertiary text-sm mt-2">
-            {cash?.dailyAccount || 'งบใช้จ่ายรายวัน'}
-          </p>
+
+          {budget?.dailyBudget > 0 ? (
+            <>
+              <p className="text-text-tertiary text-sm mt-2">
+                งบใช้จ่ายเดือนนี้ {formatCurrency(budget.dailyBudget)} · ใช้ไปแล้ว{' '}
+                {formatCurrency(budget.dailySpent)}
+              </p>
+
+              <div className="w-full bg-bg-card rounded-full h-2 overflow-hidden mt-4">
+                <div
+                  className={`h-full rounded-full ${
+                    usedPct > 100 ? 'bg-coral' : 'bg-gradient-to-r from-cyan to-emerald'
+                  }`}
+                  style={{ width: `${Math.max(0, Math.min(100, usedPct))}%` }}
+                />
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-border-soft space-y-2">
+                {budget.categories
+                  .filter((c) => c.spendable)
+                  .map((c) => (
+                    <div key={c.category} className="flex items-center justify-between text-sm">
+                      <span className="text-text-secondary">{c.category}</span>
+                      <span className="text-white font-bold">
+                        {formatCurrency(c.remaining)}
+                        <span className="text-text-tertiary font-normal">
+                          {' '}/ {formatCurrency(c.budget)}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                {budget.committed > 0 && (
+                  <div className="flex items-center justify-between text-sm pt-2 border-t border-border-soft">
+                    <span className="text-text-secondary">กันไว้แล้ว (DCA / PVD / ที่จอดรถ)</span>
+                    <span className="text-text-tertiary font-bold">
+                      {formatCurrency(budget.committed)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <p className="text-text-tertiary text-sm mt-2">
+              {cash?.dailyAccount || 'งบใช้จ่ายรายวัน'}
+            </p>
+          )}
 
           {cash?.hasAccounts && (
-            <div className="mt-5 pt-4 border-t border-border-soft space-y-2">
-              {cash.topUp > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-text-secondary">โอนมาเติมได้</span>
-                  <span className="text-white font-bold">{formatCurrency(cash.topUp)}</span>
-                </div>
-              )}
-              {cash.reserved > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-text-secondary">เงินกันไว้ (สำรอง / ออม)</span>
-                  <span className="text-text-tertiary font-bold">
-                    {formatCurrency(cash.reserved)}
-                  </span>
-                </div>
-              )}
-              {cash.excludedForeign && (
-                <p className="text-warning text-xs">ยังไม่รวมบัญชีสกุลเงินต่างประเทศ</p>
-              )}
-            </div>
+            <p className="text-text-tertiary text-xs mt-4">
+              ยอดในบัญชีใช้จ่ายรายวัน {formatCurrency(cash.daily)} · โอนมาเติมได้{' '}
+              {formatCurrency(cash.topUp)}
+            </p>
           )}
         </div>
 

@@ -8,6 +8,7 @@ export const RANGES = {
   accounts: "'03_ACCOUNTS'!B5:R100",
   investment: "'06_INVESTMENT'!B5:T100",
   dca: "'08_DCA_PLAN'!B5:I200",
+  budget: "'10_BUDGET'!B5:I400",
   netWorth: "'14_NET_WORTH'!B5:Q200",
   inbox: "'16_INBOX'!B5:U200",
 };

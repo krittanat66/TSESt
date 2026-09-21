@@ -313,6 +313,40 @@ function buildInbox(rows) {
     });
 }
 
+// 10_BUDGET is the plan the month is actually meant to run on: a row per
+// category with its own budget and the spend matched to it. Categories that
+// never touch the wallet (payroll deductions, DCA, PVD) are separated from
+// the ones the day is spent out of.
+const OFF_WALLET = /pvd|stock|invest|parking/i;
+
+function buildBudget(rows, key) {
+  const forMonth = rows.filter((r) => monthKey(r.Month) === key && str(r.Category));
+  const categories = forMonth.map((r) => {
+    const budget = num(r.Budget);
+    const actual = num(r.Actual);
+    return {
+      category: str(r.Category),
+      budget,
+      actual,
+      remaining: money(budget - actual),
+      note: str(r.Note),
+      spendable: !OFF_WALLET.test(str(r.Category)),
+    };
+  });
+
+  const wallet = categories.filter((c) => c.spendable);
+  const sum = (list, field) => money(list.reduce((t, c) => t + c[field], 0));
+
+  return {
+    categories,
+    // What this month allows for living expenses, and what is left of it.
+    dailyBudget: sum(wallet, 'budget'),
+    dailySpent: sum(wallet, 'actual'),
+    dailyRemaining: sum(wallet, 'remaining'),
+    committed: sum(categories.filter((c) => !c.spendable), 'budget'),
+  };
+}
+
 function buildAlerts(monthly, netWorthRow) {
   const alerts = [];
   const remaining = monthly.income.actual - monthly.expense.actual - monthly.saving.actual;
@@ -360,6 +394,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const accounts = buildAccounts(rowsToObjects(raw.accounts));
   const investment = buildInvestment(rowsToObjects(raw.investment));
   const dca = buildDca(rowsToObjects(raw.dca), key);
+  const budget = buildBudget(rowsToObjects(raw.budget ?? []), key);
   const dcaScores = buildDcaScores(rowsToObjects(raw.dcaScore ?? []), key);
   const netWorthHistory = buildNetWorthHistory(rowsToObjects(raw.netWorth));
   const inbox = buildInbox(rowsToObjects(raw.inbox));
@@ -382,7 +417,14 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   // nothing. Account balances are entered, so they answer the question the
   // headline actually asks; the monthly cell stays available beside it.
   const cash = buildCashPosition(accounts);
-  const availableCash = cash.hasAccounts ? cash.daily : remainingCash;
+
+  // What is left of this month's living budget is the figure the headline
+  // promises. The day-to-day account's balance is only what happens to sit
+  // there right now — it read ฿123 while the budget still had thousands
+  // unspent, because the salary had not been moved across yet.
+  const availableCash = budget.categories.length
+    ? budget.dailyRemaining
+    : (cash.hasAccounts ? cash.daily : remainingCash);
 
   const dashboard = {
     month: monthLabel(key),
@@ -402,6 +444,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     remainingChange: pct(remainingCash, num(previous?.['Remaining Cash (Actual)'])),
     employeePvd,
     cash,
+    budget,
     netWorthChange: prevNetWorth ? pct(netWorth, prevNetWorth.value) : 0,
   };
 
@@ -412,6 +455,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     investment,
     dca,
     dcaScores,
+    budget,
     netWorthHistory,
     inbox,
     alerts: buildAlerts(monthly, latestNetWorth),
