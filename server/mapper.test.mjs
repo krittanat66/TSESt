@@ -21,6 +21,13 @@ const raw = {
     [serial('2026-09-01'), 'Investment Reserve', 1000, 0, 1000, 0, 'Normal', ''],
     [serial('2026-09-01'), 'PVD', 2842, 0, 2842, 0, 'Normal', 'หักจากเงินเดือน 15%'],
   ],
+  // 09_PVD, verbatim from the sheet. 14_NET_WORTH records PVD as N/A, so this
+  // balance is the only place the fund is accounted for.
+  pvd: [
+    ['Month','Salary (derived)','Employee %','Employee Contribution','Employer %','Employer Contribution','Employee Cum.','Employer Cum.','Employee Benefit','Employer Benefit','Total Contribution','Investment Gain/Loss','Ending Balance (Calculated)','Ending Balance (Reported)','Difference','Source'],
+    [serial('2026-08-01'), 37890, 0.15, 5683.5, 0.12, 4546.8, 30834, 24667.2, 1512.69, 1210.17, 55501.2, 2722.86, 58200, 58200, 0, 'statement'],
+    [serial('2026-09-01'), 0, 0.15, 0, 0.12, 0, 30834, 24667.2, 1627.66, 1302.15, 55501.2, 2929.81, 58431.01, 58431.01, 0, 'statement'],
+  ],
   // 03_ACCOUNTS lost its "Movement (TX)" column after the Sheets conversion.
   accounts: [
     ['Account ID','Account Name','Institution','Account Type','Currency','Purpose','Opening Balance','Opening Date','Current Balance','Reported Balance','Difference','Available Balance','Last Updated','Source','Data Status','Status'],
@@ -81,7 +88,8 @@ console.log('netWorthHistory:', out.netWorthHistory.map((n) => `${n.date}=${n.va
 console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidence}`).join(' | '));
 
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
-check(out.dashboard.netWorth === 240716, `netWorth: ${out.dashboard.netWorth}`);
+// 240,716 from the sheet plus the 58,431 fund it leaves out.
+check(out.dashboard.netWorth === 299147, `netWorth: ${out.dashboard.netWorth}`);
 // The headline is what is left of the living budget: Daily Expenses 7000 +
 // Cat 2000, nothing spent yet. Parking, US Stocks and PVD are committed
 // elsewhere and stay out of it.
@@ -93,6 +101,12 @@ check(out.dashboard.cash.daily === 123.17, `cash.daily: ${out.dashboard.cash.dai
 check(out.dashboard.cash.topUp === 40414.98, `topUp: ${out.dashboard.cash.topUp}`);
 check(out.dashboard.remainingCash === 4303, `remainingCash: ${out.dashboard.remainingCash}`);
 check(out.dashboard.monthUnrecorded === false, `monthUnrecorded: ${out.dashboard.monthUnrecorded}`);
+// The fund is added on top of the sheet's own total, which omits it.
+check(out.dashboard.pvdBalance === 58431.01, `pvdBalance: ${out.dashboard.pvdBalance}`);
+check(out.dashboard.sheetNetWorth === 240716, `sheetNetWorth: ${out.dashboard.sheetNetWorth}`);
+check(out.dashboard.totalAssets === 305765, `totalAssets: ${out.dashboard.totalAssets}`);
+// Base pay, which appears nowhere else in the book.
+check(out.pvdFund.derivedSalary === 0, `derivedSalary: ${out.pvdFund.derivedSalary}`);
 check(out.dashboard.employeePvd === 2700, `employeePvd: ${out.dashboard.employeePvd}`);
 check(Math.abs(out.dashboard.incomeChange - 8.7) < 0.2, `incomeChange: ${out.dashboard.incomeChange}`);
 
@@ -137,8 +151,10 @@ const investOnly = {
 };
 const zeroIncome = mapSheetsToAppData(investOnly);
 check(zeroIncome.dashboard.monthKey === '2026-09', `investment-only month: ${zeroIncome.dashboard.monthKey}`);
-// Net Worth column is empty in that sheet, so 14_NET_WORTH has to cover it.
-check(zeroIncome.dashboard.netWorth === 240716, `netWorth fallback: ${zeroIncome.dashboard.netWorth}`);
+// Net Worth column is empty in that sheet, so 14_NET_WORTH has to cover it —
+// plus the PVD balance, which no net-worth row carries.
+check(zeroIncome.dashboard.netWorth === 299147, `netWorth fallback: ${zeroIncome.dashboard.netWorth}`);
+check(zeroIncome.dashboard.sheetNetWorth === 240716, `sheetNetWorth: ${zeroIncome.dashboard.sheetNetWorth}`);
 // A month with investment but no income recorded is unfilled, not overspent.
 check(
   zeroIncome.alerts.some((a) => a.id === 'ALERT-NO-INCOME'),

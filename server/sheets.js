@@ -44,6 +44,7 @@ export function buildAuth() {
 const OPTIONAL_RANGES = {
   dcaScore: "'20_DCA_SCORE'!B5:M300",
   budget: "'10_BUDGET'!B5:I400",
+  pvd: "'09_PVD'!B5:Q200",
 };
 
 async function fetchRange(range) {

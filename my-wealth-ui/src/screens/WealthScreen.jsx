@@ -1,6 +1,6 @@
 import { Header } from '../components/Navigation';
 import { NetWorthChart } from '../components/Charts';
-import { formatCurrency } from '../data/mockData';
+import { formatCurrency, formatPercent } from '../data/mockData';
 import { useWealth } from '../data/WealthContext';
 
 export function WealthScreen() {
@@ -20,7 +20,15 @@ export function WealthScreen() {
             <p className="text-white text-2xl font-bold">
               {formatCurrency(dashboard.netWorth)}
             </p>
-            <p className="text-emerald text-xs mt-2 font-semibold">↑ +5.2%</p>
+            {dashboard.netWorthChange !== 0 && (
+              <p
+                className={`text-xs mt-2 font-semibold ${
+                  dashboard.netWorthChange > 0 ? 'text-emerald' : 'text-coral'
+                }`}
+              >
+                {dashboard.netWorthChange > 0 ? '↑' : '↓'} {formatPercent(dashboard.netWorthChange)}
+              </p>
+            )}
           </div>
 
           <div className="bg-gradient-to-br from-emerald/20 to-bg-elevated rounded-lg p-4 border border-emerald/30">
@@ -28,6 +36,11 @@ export function WealthScreen() {
             <p className="text-white text-2xl font-bold">
               {formatCurrency(dashboard.totalAssets)}
             </p>
+            {dashboard.pvdBalance > 0 && (
+              <p className="text-text-tertiary text-xs mt-2">
+                รวม PVD {formatCurrency(dashboard.pvdBalance)}
+              </p>
+            )}
           </div>
 
           <div className="bg-gradient-to-br from-coral/20 to-bg-elevated rounded-lg p-4 border border-coral/30">

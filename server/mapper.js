@@ -347,6 +347,29 @@ function buildBudget(rows, key) {
   };
 }
 
+// 09_PVD tracks the fund month by month and reconciles to the statement, but
+// 14_NET_WORTH records its PVD column as N/A, so the balance was missing from
+// total assets entirely.
+function buildPvdFund(rows, key) {
+  const dated = rows.filter((r) => monthKey(r.Month));
+  if (!dated.length) return null;
+
+  const upTo = dated.filter((r) => monthKey(r.Month) <= key);
+  const usable = upTo.length ? upTo : dated;
+  const row = usable[usable.length - 1];
+
+  return {
+    month: monthKey(row.Month),
+    balance: money(row['Ending Balance (Reported)']) || money(row['Ending Balance (Calculated)']),
+    employeeCum: money(row['Employee Cum.']),
+    employerCum: money(row['Employer Cum.']),
+    gain: money(row['Investment Gain/Loss']),
+    // The fund is computed off base pay, so it is the one place the real
+    // salary is recorded anywhere in the book.
+    derivedSalary: money(row['Salary (derived)']),
+  };
+}
+
 function buildAlerts(monthly, netWorthRow) {
   const alerts = [];
   const remaining = monthly.income.actual - monthly.expense.actual - monthly.saving.actual;
@@ -395,6 +418,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const investment = buildInvestment(rowsToObjects(raw.investment));
   const dca = buildDca(rowsToObjects(raw.dca), key);
   const budget = buildBudget(rowsToObjects(raw.budget ?? []), key);
+  const pvdFund = buildPvdFund(rowsToObjects(raw.pvd ?? []), key);
   const dcaScores = buildDcaScores(rowsToObjects(raw.dcaScore ?? []), key);
   const netWorthHistory = buildNetWorthHistory(rowsToObjects(raw.netWorth));
   const inbox = buildInbox(rowsToObjects(raw.inbox));
@@ -403,7 +427,13 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const prevNetWorth = netWorthHistory[netWorthHistory.length - 2] ?? null;
 
   // 02_MONTHLY carries its own Net Worth column; prefer it, fall back to 14_NET_WORTH.
-  const netWorth = Math.round(num(current?.['Net Worth']) || latestNetWorth?.value || 0);
+  const sheetNetWorth = Math.round(num(current?.['Net Worth']) || latestNetWorth?.value || 0);
+
+  // Neither of those totals includes the provident fund, because 14_NET_WORTH
+  // records its PVD column as N/A. The fund is real money with a reconciled
+  // balance, so leaving it out understates the position by its whole value.
+  const pvdBalance = pvdFund?.balance ?? 0;
+  const netWorth = Math.round(sheetNetWorth + pvdBalance);
 
   // Remaining Cash no longer subtracts Employee PVD: that contribution goes
   // into the fund without passing through spendable cash, so the sheet's
@@ -439,7 +469,9 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     monthKey: key,
     availableCash,
     netWorth,
-    totalAssets: latestNetWorth?.totalAssets || netWorth,
+    totalAssets: Math.round((latestNetWorth?.totalAssets || sheetNetWorth) + pvdBalance),
+    sheetNetWorth,
+    pvdBalance,
     totalDebt: latestNetWorth?.debt || 0,
     monthlyIncome: monthly.income.actual,
     monthlyExpense: monthly.expense.actual,
@@ -466,6 +498,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     dca,
     dcaScores,
     budget,
+    pvdFund,
     netWorthHistory,
     inbox,
     alerts: buildAlerts(monthly, latestNetWorth),
