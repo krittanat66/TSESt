@@ -8,7 +8,6 @@ export const RANGES = {
   accounts: "'03_ACCOUNTS'!B5:R100",
   investment: "'06_INVESTMENT'!B5:T100",
   dca: "'08_DCA_PLAN'!B5:I200",
-  budget: "'10_BUDGET'!B5:I400",
   netWorth: "'14_NET_WORTH'!B5:Q200",
   inbox: "'16_INBOX'!B5:U200",
 };
@@ -39,14 +38,20 @@ export function buildAuth() {
   );
 }
 
-// 20_DCA_SCORE is added by hand and may not exist yet, and batchGet rejects the
-// whole request when any range names a missing sheet. So it is fetched apart.
-export async function fetchDcaScoreRows() {
+// batchGet rejects the whole request when any one range names a missing sheet,
+// which would take the dashboard down over a tab that is merely optional. Those
+// are fetched one at a time so a missing one costs only its own data.
+const OPTIONAL_RANGES = {
+  dcaScore: "'20_DCA_SCORE'!B5:M300",
+  budget: "'10_BUDGET'!B5:I400",
+};
+
+async function fetchRange(range) {
   try {
     const sheets = google.sheets({ version: 'v4', auth: buildAuth() });
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: process.env.SPREADSHEET_ID,
-      range: "'20_DCA_SCORE'!B5:M300",
+      range,
       valueRenderOption: 'UNFORMATTED_VALUE',
       dateTimeRenderOption: 'SERIAL_NUMBER',
     });
@@ -54,6 +59,10 @@ export async function fetchDcaScoreRows() {
   } catch {
     return [];
   }
+}
+
+export function fetchDcaScoreRows() {
+  return fetchRange(OPTIONAL_RANGES.dcaScore);
 }
 
 export async function fetchSheetValues() {
@@ -77,6 +86,10 @@ export async function fetchSheetValues() {
   keys.forEach((key, i) => {
     out[key] = res.data.valueRanges?.[i]?.values ?? [];
   });
-  out.dcaScore = await fetchDcaScoreRows();
+  const optional = Object.keys(OPTIONAL_RANGES);
+  const fetched = await Promise.all(optional.map((k) => fetchRange(OPTIONAL_RANGES[k])));
+  optional.forEach((k, i) => {
+    out[k] = fetched[i];
+  });
   return out;
 }
