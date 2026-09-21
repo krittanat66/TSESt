@@ -39,3 +39,20 @@ export async function replyToLine(replyToken, text) {
   });
   return res.ok;
 }
+
+// Broadcast reaches every friend of the bot. For a personal account that is
+// the owner and nobody else, which avoids having to store a user id anywhere.
+export async function broadcastToLine(text) {
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  if (!token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
+
+  const res = await fetch('https://api.line.me/v2/bot/message/broadcast', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ messages: [{ type: 'text', text }] }),
+  });
+  if (!res.ok) {
+    throw new Error(`LINE broadcast responded ${res.status}`);
+  }
+  return true;
+}

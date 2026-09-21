@@ -58,5 +58,52 @@ check(rows.every((r) => r.status === 'Need Review'), 'every row must wait for re
 check(replyText(rows[0]).includes('120'), 'reply names the amount');
 check(replyText(rows[1]).includes('ข้าว 120'), 'failure reply shows the expected format');
 
+// --- commands ------------------------------------------------------------
+import { matchCommand, commandReply, dcaDigest } from './line-commands.js';
+
+check(matchCommand('สรุป') === 'summary', 'สรุป is a command');
+check(matchCommand('หุ้น') === 'dca', 'หุ้น is a command');
+check(matchCommand('ช่วย') === 'help', 'ช่วย is a command');
+// Anything carrying a number is spending, never a command.
+check(matchCommand('ข้าว 120') === null, 'a message with an amount is not a command');
+check(matchCommand('สรุป 500') === null, 'a command word plus an amount is spending');
+check(matchCommand('ข้าว') === null, 'a bare category word is not a command');
+
+const data = {
+  dashboard: {
+    month: 'September 2026', monthKey: '2026-09', availableCash: 123.17,
+    netWorth: 361000, cash: { topUp: 40938.61, reserved: 93876.99 },
+  },
+  budget: {
+    dailyBudget: 9000, dailyRemaining: 9000,
+    categories: [
+      { category: 'Daily Expenses', budget: 7000, remaining: 7000, spendable: true },
+      { category: 'PVD', budget: 2842, remaining: 2842, spendable: false },
+    ],
+  },
+  dca: [{ label: 'US Stocks', plan: 3000, actual: 3000, percentage: 100, status: 'Complete' }],
+  dcaScores: [
+    { ticker: 'NVDA', score: 8, amount: 727, reason: 'ย่อตาม sentiment ทั้งกลุ่ม',
+      newsPositive: 'ดีมานด์ศูนย์ข้อมูลโต', newsNegative: '' },
+  ],
+};
+
+const dca = commandReply('dca', data);
+check(dca.includes('NVDA 8/10'), `dca reply score: ${dca}`);
+// The news is the reason the score is what it is, so it has to survive.
+check(dca.includes('ดีมานด์ศูนย์ข้อมูลโต'), 'dca reply carries the news');
+check(dca.includes('ย่อตาม sentiment'), 'dca reply carries the reason');
+check(dca.includes('US Stocks'), 'dca reply lists the plan');
+
+const sum = commandReply('summary', data);
+check(sum.includes('฿123'), `summary reply cash: ${sum}`);
+check(sum.includes('฿9,000'), 'summary reply budget');
+check(sum.includes('฿361,000'), 'summary reply net worth');
+// Committed categories are not spending money and stay out of the budget list.
+check(!sum.includes('PVD'), 'summary omits committed categories');
+
+check(commandReply('help', data).includes('ข้าว 120'), 'help shows the format');
+check(dcaDigest(data).includes('NVDA'), 'digest reuses the dca reply');
+
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

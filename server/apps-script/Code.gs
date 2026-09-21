@@ -336,6 +336,39 @@ function keepAwake() {
   Logger.log('keepAwake: ' + res.getResponseCode());
 }
 
+/**
+ * Asks the server to push this month's DCA plan and scores to LINE.
+ *
+ * The scheduling lives here rather than in the server because Render's free
+ * plan sleeps the service, and a sleeping process runs no cron of its own.
+ * Needs Script Properties APP_URL and APP_PASSCODE.
+ */
+function notifyDcaOnLine() {
+  var props = PropertiesService.getScriptProperties();
+  var base = props.getProperty('APP_URL');
+  var passcode = props.getProperty('APP_PASSCODE');
+  if (!base || !passcode) {
+    throw new Error('Set the Script Properties APP_URL and APP_PASSCODE first.');
+  }
+
+  var res = UrlFetchApp.fetch(base.replace(/\/+$/, '') + '/api/dca-notify', {
+    method: 'post',
+    headers: { Authorization: 'Bearer ' + passcode },
+    muteHttpExceptions: true,
+  });
+  Logger.log('notifyDcaOnLine: ' + res.getResponseCode() + ' ' + res.getContentText());
+  return res.getResponseCode();
+}
+
+/** Sends the DCA reminder on the 1st of each month. Run once to install. */
+function installDcaNotifyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'notifyDcaOnLine') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('notifyDcaOnLine').timeBased().onMonthDay(1).atHour(9).create();
+  Logger.log('ตั้งเวลาแล้ว: เตือน DCA ทาง LINE ทุกวันที่ 1 ประมาณ 9:00');
+}
+
 function installKeepAwakeTrigger() {
   ScriptApp.getProjectTriggers()
     .filter(function (t) { return t.getHandlerFunction() === 'keepAwake'; })

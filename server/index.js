@@ -9,7 +9,8 @@ import { fetchSheetValues } from './sheets.js';
 import { mapSheetsToAppData } from './mapper.js';
 import { writeDcaScores } from './dca-writer.js';
 import { verifySignature, buildInboxRows, replyText } from './line-webhook.js';
-import { writeInboxRows, replyToLine } from './line-writer.js';
+import { writeInboxRows, replyToLine, broadcastToLine } from './line-writer.js';
+import { commandReply, dcaDigest } from './line-commands.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -144,15 +145,54 @@ app.post('/api/line-webhook', async (req, res) => {
   const rows = buildInboxRows(req.body?.events);
   if (!rows.length) return undefined;
 
-  try {
-    await writeInboxRows(rows.filter((r) => !r.error).concat(rows.filter((r) => r.error)));
-    cache.clear();
-  } catch (err) {
-    console.error('line-webhook: write failed', err.message);
+  const commands = rows.filter((r) => r.command);
+  const entries = rows.filter((r) => !r.command);
+
+  if (entries.length) {
+    try {
+      await writeInboxRows(entries);
+      cache.clear();
+    } catch (err) {
+      console.error('line-webhook: write failed', err.message);
+    }
   }
 
-  await Promise.all(rows.map((r) => replyToLine(r.replyToken, replyText(r))));
+  const replies = entries.map((r) => replyToLine(r.replyToken, replyText(r)));
+
+  if (commands.length) {
+    try {
+      const data = await getWealthData();
+      for (const c of commands) {
+        replies.push(replyToLine(c.replyToken, commandReply(c.command, data)));
+      }
+    } catch (err) {
+      console.error('line-webhook: read failed', err.message);
+      for (const c of commands) {
+        replies.push(replyToLine(c.replyToken, 'อ่านข้อมูลจากชีตไม่ได้ ลองใหม่อีกครั้ง'));
+      }
+    }
+  }
+
+  await Promise.all(replies);
   return undefined;
+});
+
+/**
+ * Pushes the month's DCA plan, scores and the news behind them to LINE.
+ *
+ * Driven by an Apps Script time trigger rather than a timer in here, because
+ * Render's free plan sleeps the service and a sleeping process runs no cron.
+ * Guarded by the app passcode: it is a push to the owner's phone, not a
+ * public route.
+ */
+app.post('/api/dca-notify', requirePasscode, async (_req, res) => {
+  try {
+    const data = await getWealthData();
+    await broadcastToLine(dcaDigest(data));
+    res.json({ ok: true, month: data.dashboard.monthKey });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
 });
 
 app.post('/api/refresh', requirePasscode, (_req, res) => {

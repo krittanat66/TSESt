@@ -218,6 +218,30 @@ back to `Other`; a message that matched no category word is still recorded,
 marked `Low` confidence so review sees it first. A message with no number at
 all is kept as raw text with the same status.
 
+### Asking the bot
+
+A message that carries no number is a question, not spending:
+
+| พิมพ์ | ได้ |
+| --- | --- |
+| `สรุป` | ยอดในบัญชี งบเดือนนี้ และความมั่งคั่งสุทธิ |
+| `หุ้น` (หรือ `dca`, `ข่าว`, `พอร์ต`) | แผน DCA คะแนนรายตัว เหตุผล และข่าว |
+| `ช่วย` | รายการคำสั่ง |
+
+The DCA answer reads 08_DCA_PLAN and 20_DCA_SCORE, including the Reason,
+News (+) and News (-) columns. Those are written by monthly research, not
+computed — the bot reports what is in the sheet and never invents a headline.
+
+### Monthly DCA reminder
+
+`POST /api/dca-notify` (app passcode) broadcasts the same DCA text to the
+bot's friends. Scheduling lives in Apps Script rather than the server because
+Render's free plan sleeps the service and a sleeping process runs no cron:
+
+1. Apps Script → Project Settings → Script Properties, add `APP_URL` (the
+   deployed origin) and `APP_PASSCODE`.
+2. Run `installDcaNotifyTrigger` once. It fires on the 1st of each month.
+
 ### Setup
 
 1. LINE Developers console → create a Messaging API channel.

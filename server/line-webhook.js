@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { parseLineMessage } from './line-parser.js';
+import { matchCommand } from './line-commands.js';
 
 // LINE signs every delivery with the channel secret. Without checking it the
 // endpoint is a public write into the sheet for anyone who finds the URL, so
@@ -21,6 +22,14 @@ export function buildInboxRows(events) {
   const rows = [];
   for (const event of events ?? []) {
     if (event?.type !== 'message' || event?.message?.type !== 'text') continue;
+
+    // A question is answered, not filed. Without this "สรุป" would become an
+    // uncategorised row in the inbox.
+    const command = matchCommand(event.message.text);
+    if (command) {
+      rows.push({ command, replyToken: event.replyToken ?? '' });
+      continue;
+    }
 
     const parsed = parseLineMessage(event.message.text);
     if (!parsed.ok) {
@@ -61,6 +70,7 @@ export function buildInboxRows(events) {
 }
 
 export function replyText(row) {
+  if (row.command) return null; // answered from sheet data by the caller
   if (row.error === 'no-amount') {
     return 'ไม่เจอจำนวนเงินในข้อความ ลองพิมพ์แบบนี้: ข้าว 120';
   }
