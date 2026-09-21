@@ -39,7 +39,10 @@ export function MonthlyScreen() {
   const invest = monthly.investment.actual;
   const pvd = monthly.pvd?.employee ?? 0;
 
-  const remaining = dashboard.remainingCash;
+  // With no Actual columns entered, Remaining Cash is a negative made of
+  // blanks. The plan is shown instead, labelled as the plan.
+  const unrecorded = dashboard.monthUnrecorded;
+  const remaining = unrecorded ? dashboard.remainingCashPlan : dashboard.remainingCash;
   const overspent = remaining < 0;
   // PVD is deliberately absent from this walk: the contribution goes into the
   // fund without ever being spendable, so it belongs under assets, not here.
@@ -78,10 +81,16 @@ export function MonthlyScreen() {
           />
           <SummaryCard label="เงินลงทุน" actual={invest} plan={monthly.investment.plan} />
           <SummaryCard
-            label="เงินเหลือใช้"
+            label={unrecorded ? 'เงินเหลือใช้ (ตามแผน)' : 'เงินเหลือใช้'}
             actual={remaining}
             valueClass={overspent ? 'text-coral' : 'text-white'}
-            note={overspent ? 'เดือนนี้เงินออกมากกว่าเงินเข้า — ดูรายละเอียดด้านล่าง' : null}
+            note={
+              unrecorded
+                ? 'ยังไม่ได้กรอกรายรับ/รายจ่ายจริงของเดือนนี้ จึงแสดงตัวเลขตามแผนไว้ก่อน'
+                : overspent
+                  ? 'เดือนนี้เงินออกมากกว่าเงินเข้า — ดูรายละเอียดด้านล่าง'
+                  : null
+            }
           />
         </div>
 
@@ -134,7 +143,14 @@ export function MonthlyScreen() {
             </p>
           )}
 
-          {gap >= 1 && (
+          {unrecorded && (
+            <p className="text-warning text-xs mt-3">
+              ช่อง Actual ของ รายรับ / รายจ่าย / เงินออม ยังว่างอยู่ในชีต 02_MONTHLY มีแต่เงินลงทุน
+              ที่กรอกไว้ ยอดคงเหลือจึงกลายเป็นลบ — ไม่ใช่ว่าใช้เงินเกิน
+            </p>
+          )}
+
+          {!unrecorded && gap >= 1 && (
             <p className="text-warning text-xs mt-3">
               ชีตระบุคงเหลือ {formatCurrency(remaining)} ต่างจากยอดคำนวณข้างต้น {formatCurrency(gap)} —
               สูตรในช่อง Remaining Cash (Actual) ของชีต 02_MONTHLY น่าจะหักอย่างอื่นเพิ่ม หรือนับซ้ำ

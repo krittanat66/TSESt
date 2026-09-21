@@ -92,6 +92,7 @@ check(out.budget.committed === 8442, `committed: ${out.budget.committed}`);
 check(out.dashboard.cash.daily === 123.17, `cash.daily: ${out.dashboard.cash.daily}`);
 check(out.dashboard.cash.topUp === 40414.98, `topUp: ${out.dashboard.cash.topUp}`);
 check(out.dashboard.remainingCash === 4303, `remainingCash: ${out.dashboard.remainingCash}`);
+check(out.dashboard.monthUnrecorded === false, `monthUnrecorded: ${out.dashboard.monthUnrecorded}`);
 check(out.dashboard.employeePvd === 2700, `employeePvd: ${out.dashboard.employeePvd}`);
 check(Math.abs(out.dashboard.incomeChange - 8.7) < 0.2, `incomeChange: ${out.dashboard.incomeChange}`);
 
@@ -143,6 +144,10 @@ check(
   zeroIncome.alerts.some((a) => a.id === 'ALERT-NO-INCOME'),
   'missing-income alert raised'
 );
+// Only the investment column is filled, so the month counts as unrecorded and
+// the plan figure is carried for the UI to fall back on.
+check(zeroIncome.dashboard.monthUnrecorded === true, `monthUnrecorded: ${zeroIncome.dashboard.monthUnrecorded}`);
+check(zeroIncome.dashboard.remainingCashPlan === 4303.25, `plan: ${zeroIncome.dashboard.remainingCashPlan}`);
 
 console.log('\n' + (fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed'));
 process.exit(fail.length ? 1 : 0);

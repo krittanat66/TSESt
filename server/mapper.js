@@ -411,6 +411,14 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   // as-is rather than compensating here.
   const employeePvd = monthly.pvd.employee;
   const remainingCash = money(current?.['Remaining Cash (Actual)']);
+  const remainingCashPlan = money(current?.['Remaining Cash (Plan)']);
+
+  // Remaining Cash (Actual) subtracts the Actual columns from each other, so
+  // a month with only its investment filled in reports a confident negative
+  // built out of blanks. Saying the month is unrecorded is the honest reading;
+  // the plan figure is what stands in until the actuals are entered.
+  const monthUnrecorded =
+    !monthly.income.actual && !monthly.expense.actual && !monthly.saving.actual;
 
   // 02_MONTHLY's Remaining Cash goes negative whenever a month's Actual
   // columns are still blank, because the investment figure is subtracted from
@@ -441,6 +449,8 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     incomeChange: monthly.income.trend,
     expenseChange: monthly.expense.trend,
     savingChange: monthly.saving.trend,
+    remainingCashPlan,
+    monthUnrecorded,
     remainingChange: pct(remainingCash, num(previous?.['Remaining Cash (Actual)'])),
     employeePvd,
     cash,
