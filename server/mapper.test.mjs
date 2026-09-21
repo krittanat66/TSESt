@@ -71,7 +71,10 @@ console.log('inbox:', out.inbox.map((i) => `${i.id} ${i.date} conf=${i.confidenc
 
 check(out.dashboard.monthKey === '2026-09', `month: ${out.dashboard.monthKey}`);
 check(out.dashboard.netWorth === 240716, `netWorth: ${out.dashboard.netWorth}`);
-check(out.dashboard.availableCash === 4303, `availableCash: ${out.dashboard.availableCash}`);
+// Employee PVD is added back: the sheet deducts it from Remaining Cash, but it
+// goes into the fund rather than out of spendable cash. 4303 + 2700.
+check(out.dashboard.availableCash === 7003, `availableCash: ${out.dashboard.availableCash}`);
+check(out.dashboard.sheetRemainingCash === 4303, `sheetRemainingCash: ${out.dashboard.sheetRemainingCash}`);
 check(Math.abs(out.dashboard.incomeChange - 8.7) < 0.2, `incomeChange: ${out.dashboard.incomeChange}`);
 
 // Serial dates must come out as ISO, not "17/9/2026" or an epoch number.
@@ -117,6 +120,11 @@ const zeroIncome = mapSheetsToAppData(investOnly);
 check(zeroIncome.dashboard.monthKey === '2026-09', `investment-only month: ${zeroIncome.dashboard.monthKey}`);
 // Net Worth column is empty in that sheet, so 14_NET_WORTH has to cover it.
 check(zeroIncome.dashboard.netWorth === 240716, `netWorth fallback: ${zeroIncome.dashboard.netWorth}`);
+// A month with investment but no income recorded is unfilled, not overspent.
+check(
+  zeroIncome.alerts.some((a) => a.id === 'ALERT-NO-INCOME'),
+  'missing-income alert raised'
+);
 
 console.log('\n' + (fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed'));
 process.exit(fail.length ? 1 : 0);

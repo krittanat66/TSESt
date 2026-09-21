@@ -41,7 +41,9 @@ export function MonthlyScreen() {
 
   const remaining = dashboard.remainingCash;
   const overspent = remaining < 0;
-  const computed = income - expense - saving - invest - pvd;
+  // PVD is deliberately absent from this walk: the contribution goes into the
+  // fund without ever being spendable, so it belongs under assets, not here.
+  const computed = income - expense - saving - invest;
 
   // Saving and investing are not losses, but they do leave the spendable pot,
   // so a month can read negative with nothing wasted. Naming the largest
@@ -50,7 +52,6 @@ export function MonthlyScreen() {
     { label: 'รายจ่าย', amount: expense },
     { label: 'เงินออม', amount: saving },
     { label: 'เงินลงทุน', amount: invest },
-    { label: 'PVD', amount: pvd },
   ]
     .filter((d) => d.amount > 0)
     .sort((a, b) => b.amount - a.amount)[0];
@@ -104,7 +105,6 @@ export function MonthlyScreen() {
             <BreakdownRow label="รายจ่าย" sign="−" amount={expense} />
             <BreakdownRow label="กันไปเป็นเงินออม" sign="−" amount={saving} />
             <BreakdownRow label="กันไปลงทุน" sign="−" amount={invest} />
-            <BreakdownRow label="PVD หักจากเงินเดือน" sign="−" amount={pvd} />
 
             <div className="flex items-center justify-between pt-3 mt-1 border-t border-border-soft">
               <span className="text-white font-bold">คงเหลือ (คำนวณ)</span>
@@ -113,6 +113,18 @@ export function MonthlyScreen() {
               </span>
             </div>
           </div>
+
+          {pvd > 0 && (
+            <div className="mt-4 pt-3 border-t border-border-soft">
+              <div className="flex items-center justify-between">
+                <span className="text-text-secondary text-sm">PVD เข้ากองทุน</span>
+                <span className="text-emerald font-bold">{formatCurrency(pvd)}</span>
+              </div>
+              <p className="text-text-tertiary text-xs mt-1">
+                ไม่หักจากเงินใช้จ่าย — เข้ากองทุนโดยตรง นับเป็นสินทรัพย์ ดูได้ในชีต PVD
+              </p>
+            </div>
+          )}
 
           {top && income > 0 && (
             <p className="text-text-secondary text-xs mt-3">

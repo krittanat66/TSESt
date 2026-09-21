@@ -280,6 +280,17 @@ function buildAlerts(monthly, netWorthRow) {
   const alerts = [];
   const remaining = monthly.income.actual - monthly.expense.actual - monthly.saving.actual;
 
+  // Every Actual column reading zero means the month was never filled in, not
+  // that nothing happened. Without this the dashboard reports a confident
+  // negative built entirely out of blanks.
+  if (!monthly.income.actual && monthly.investment.actual) {
+    alerts.push({
+      id: 'ALERT-NO-INCOME',
+      type: 'warning',
+      message: 'ยังไม่ได้กรอก Income (Actual) ของเดือนนี้ในชีต 02_MONTHLY — ยอดเงินเหลือจึงติดลบ',
+    });
+  }
+
   alerts.push(
     remaining >= 0
       ? { id: 'ALERT-CASH', type: 'success', message: '✓ เงินเหลือเพียงพอ' }
@@ -321,7 +332,14 @@ export function mapSheetsToAppData(raw, requestedMonth) {
 
   // 02_MONTHLY carries its own Net Worth column; prefer it, fall back to 14_NET_WORTH.
   const netWorth = Math.round(num(current?.['Net Worth']) || latestNetWorth?.value || 0);
-  const remainingCash = money(current?.['Remaining Cash (Actual)']);
+
+  // The sheet's Remaining Cash subtracts Employee PVD, but that contribution
+  // never passes through spendable cash — it goes straight into the fund and
+  // shows up as an asset. Adding it back makes this figure mean what the
+  // dashboard calls it: what is left to spend.
+  const employeePvd = monthly.pvd.employee;
+  const sheetRemainingCash = money(current?.['Remaining Cash (Actual)']);
+  const remainingCash = money(sheetRemainingCash + employeePvd);
 
   const dashboard = {
     month: monthLabel(key),
@@ -338,7 +356,13 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     incomeChange: monthly.income.trend,
     expenseChange: monthly.expense.trend,
     savingChange: monthly.saving.trend,
-    remainingChange: pct(remainingCash, num(previous?.['Remaining Cash (Actual)'])),
+    remainingChange: pct(
+      remainingCash,
+      num(previous?.['Remaining Cash (Actual)']) + num(previous?.['Employee PVD'])
+    ),
+    // Kept so the app can show its own figure against the sheet's.
+    sheetRemainingCash,
+    employeePvd,
     netWorthChange: prevNetWorth ? pct(netWorth, prevNetWorth.value) : 0,
   };
 
