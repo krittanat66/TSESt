@@ -38,9 +38,14 @@ export function BottomNavigation({ activeTab, onTabChange }) {
   );
 }
 
+// black-translucent puts the web view under the iOS status bar, so without the
+// inset the title sits on top of the clock and the signal icons.
 export function Header({ title, subtitle = null, rightIcon = null }) {
   return (
-    <div className="sticky top-0 z-10 bg-gradient-to-b from-bg-primary to-bg-secondary border-b border-border-soft">
+    <div
+      className="sticky z-10 bg-gradient-to-b from-bg-primary to-bg-secondary border-b border-border-soft"
+      style={{ top: 'env(safe-area-inset-top, 0px)' }}
+    >
       <div className="px-4 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">{title}</h1>

@@ -19,6 +19,11 @@ export function HomeScreen() {
   // day-to-day account's balance, which is the money actually free to spend.
   const cash = dashboard.cash;
   const budget = data.budget;
+  // Same rule as Monthly: with every Actual column blank, the month's figures
+  // are the plan or they are nothing. Showing ฿0 beside a negative remainder
+  // made of those blanks is the worst of both.
+  const unrecorded = dashboard.monthUnrecorded;
+  const m = data.monthly;
   const cashOk = dashboard.availableCash >= 0;
   const usedPct = budget?.dailyBudget
     ? Math.round((budget.dailySpent / budget.dailyBudget) * 100)
@@ -105,31 +110,38 @@ export function HomeScreen() {
 
         {/* Monthly Summary - 2x2 Grid */}
         <div>
-          <h2 className="text-white font-bold text-lg mb-3">สรุปการเงินเดือนนี้</h2>
+          <h2 className="text-white font-bold text-lg mb-3">
+            {unrecorded ? 'สรุปการเงินเดือนนี้ (ตามแผน)' : 'สรุปการเงินเดือนนี้'}
+          </h2>
+          {unrecorded && (
+            <p className="text-warning text-xs mb-3">
+              ยังไม่ได้กรอกตัวเลขจริงของเดือนนี้ในชีต 02_MONTHLY
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <StatCard
               icon="💰"
               label="รายรับ"
-              value={dashboard.monthlyIncome}
-              trend={dashboard.incomeChange}
+              value={unrecorded ? m.income.plan : dashboard.monthlyIncome}
+              trend={unrecorded ? 0 : dashboard.incomeChange}
             />
             <StatCard
               icon="💸"
               label="ค่าใช้จ่าย"
-              value={dashboard.monthlyExpense}
-              trend={dashboard.expenseChange}
+              value={unrecorded ? m.expense.plan : dashboard.monthlyExpense}
+              trend={unrecorded ? 0 : dashboard.expenseChange}
             />
             <StatCard
               icon="💎"
               label="ออม/ลงทุน"
-              value={dashboard.monthlySaving}
-              trend={dashboard.savingChange}
+              value={unrecorded ? m.investment.plan : dashboard.monthlySaving}
+              trend={unrecorded ? 0 : dashboard.savingChange}
             />
             <StatCard
               icon="🎯"
               label="เงินเหลือ"
-              value={dashboard.remainingCash}
-              trend={dashboard.remainingChange}
+              value={unrecorded ? dashboard.remainingCashPlan : dashboard.remainingCash}
+              trend={unrecorded ? 0 : dashboard.remainingChange}
             />
           </div>
         </div>
@@ -142,9 +154,16 @@ export function HomeScreen() {
             <p className="text-white text-4xl font-bold">
               {formatCurrency(dashboard.netWorth)}
             </p>
-            <p className="text-emerald text-sm mt-2 font-semibold">
-              ↑ +5.2% จากเดือนก่อน
-            </p>
+            {dashboard.netWorthChange !== 0 && (
+              <p
+                className={`text-sm mt-2 font-semibold ${
+                  dashboard.netWorthChange > 0 ? 'text-emerald' : 'text-coral'
+                }`}
+              >
+                {dashboard.netWorthChange > 0 ? '↑' : '↓'} {formatPercent(dashboard.netWorthChange)}{' '}
+                จากเดือนก่อน
+              </p>
+            )}
           </div>
           <NetWorthChart data={netWorthHistory} />
         </div>

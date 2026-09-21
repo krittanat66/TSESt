@@ -19,7 +19,8 @@ function DataSourceBadge() {
     <button
       onClick={refresh}
       title={error ? `Sheet unreachable: ${error}` : 'Tap to refresh from Google Sheets'}
-      className={`fixed top-3 right-3 z-50 text-[10px] px-2 py-1 rounded-full border ${
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}
+      className={`fixed right-3 z-50 text-[10px] px-2 py-1 rounded-full border ${
         isLive
           ? 'border-emerald/50 text-emerald bg-emerald/10'
           : 'border-warning/50 text-warning bg-warning/10'
