@@ -83,6 +83,7 @@ import { matchCommand, commandReply, dcaDigest } from './line-commands.js';
 
 check(matchCommand('สรุป') === 'summary', 'สรุป is a command');
 check(matchCommand('หุ้น') === 'dca', 'หุ้น is a command');
+check(matchCommand('ข่าว') === 'news', 'ข่าว is its own command');
 check(matchCommand('ช่วย') === 'help', 'ช่วย is a command');
 // Anything carrying a number is spending, never a command.
 check(matchCommand('ข้าว 120') === null, 'a message with an amount is not a command');
@@ -103,8 +104,12 @@ const data = {
   },
   dca: [{ label: 'US Stocks', plan: 3000, actual: 3000, percentage: 100, status: 'Complete' }],
   dcaScores: [
-    { ticker: 'NVDA', score: 8, amount: 727, reason: 'ย่อตาม sentiment ทั้งกลุ่ม',
+    { ticker: 'NVDA', score: 8, amount: 727, buyPrice: 217.14, currentPrice: 231.5,
+      resultPct: 6.6, reason: 'ย่อตาม sentiment ทั้งกลุ่ม',
       newsPositive: 'ดีมานด์ศูนย์ข้อมูลโต', newsNegative: '' },
+    // No news written for this one: it must not produce an empty heading.
+    { ticker: 'SCHG', score: 2, amount: 182, buyPrice: 35.13, currentPrice: 35.9,
+      resultPct: 2.2, reason: '', newsPositive: '', newsNegative: '' },
   ],
 };
 
@@ -114,6 +119,18 @@ check(dca.includes('NVDA 8/10'), `dca reply score: ${dca}`);
 check(dca.includes('ดีมานด์ศูนย์ข้อมูลโต'), 'dca reply carries the news');
 check(dca.includes('ย่อตาม sentiment'), 'dca reply carries the reason');
 check(dca.includes('US Stocks'), 'dca reply lists the plan');
+// What a holding has done since it was bought is the half a reader wants.
+check(dca.includes('+6.6%'), `dca reply shows performance: ${dca}`);
+check(dca.includes('▲'), 'gains are marked');
+
+const news = commandReply('news', data);
+check(news.includes('ดีมานด์ศูนย์ข้อมูลโต'), 'news reply carries the news');
+check(!news.includes('SCHG'), 'a holding with nothing written gets no empty heading');
+check(!news.includes('US Stocks'), 'the news reply leaves the plan out');
+
+// Nothing researched yet — say so rather than returning a bare heading.
+const empty = commandReply('news', { ...data, dcaScores: [] });
+check(empty.includes('ยังไม่มีข่าว'), `empty news reply: ${empty}`);
 
 const sum = commandReply('summary', data);
 check(sum.includes('฿123'), `summary reply cash: ${sum}`);

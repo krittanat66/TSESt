@@ -225,12 +225,18 @@ A message that carries no number is a question, not spending:
 | พิมพ์ | ได้ |
 | --- | --- |
 | `สรุป` | ยอดในบัญชี งบเดือนนี้ และความมั่งคั่งสุทธิ |
-| `หุ้น` (หรือ `dca`, `ข่าว`, `พอร์ต`) | แผน DCA คะแนนรายตัว เหตุผล และข่าว |
+| `หุ้น` (หรือ `dca`, `พอร์ต`) | แผน DCA ผลตอบแทนตั้งแต่ซื้อ เหตุผล และข่าว |
+| `ข่าว` | เฉพาะข่าวและเหตุผลรายตัว |
 | `ช่วย` | รายการคำสั่ง |
 
-The DCA answer reads 08_DCA_PLAN and 20_DCA_SCORE, including the Reason,
-News (+) and News (-) columns. Those are written by monthly research, not
-computed — the bot reports what is in the sheet and never invents a headline.
+The DCA answer reads 08_DCA_PLAN and 20_DCA_SCORE, including Buy Price,
+Current Price, Result %, Reason, News (+) and News (-). Those are written by
+monthly research, not computed — the bot reports what is in the sheet and
+never invents a headline. A holding with nothing written about it is left out
+of the news section rather than given an empty heading.
+
+Research reaches the sheet as a `dca-YYYY-MM.json` file dropped in the Drive
+folder; `syncDcaFromDrive` loads it. Nothing here calls a news API.
 
 ### New month rows
 

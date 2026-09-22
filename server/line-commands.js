@@ -7,7 +7,8 @@
 const baht = (n) => `฿${Math.round(Number(n) || 0).toLocaleString('th-TH')}`;
 
 const COMMANDS = [
-  ['dca', ['dca', 'หุ้น', 'ลงทุน', 'พอร์ต', 'ข่าว']],
+  ['news', ['ข่าว', 'news']],
+  ['dca', ['dca', 'หุ้น', 'ลงทุน', 'พอร์ต']],
   ['summary', ['สรุป', 'เงิน', 'ยอด', 'คงเหลือ', 'summary']],
   ['help', ['ช่วย', 'help', 'คำสั่ง', '?']],
 ];
@@ -24,12 +25,55 @@ export function matchCommand(text) {
   return null;
 }
 
+const pct = (n) => `${n > 0 ? '+' : ''}${n}%`;
+
+// The sheet records what each holding has done since it was bought. Reporting
+// the score without it says how the month was judged but not how it turned
+// out, which is the half a reader actually wants.
+function performanceLine(s) {
+  if (!s.currentPrice || !s.buyPrice) return `${s.ticker} ${s.score}/10 · ${baht(s.amount)}`;
+  const arrow = s.resultPct > 0 ? '▲' : s.resultPct < 0 ? '▼' : '▬';
+  return `${arrow} ${s.ticker} ${pct(s.resultPct)} · ${baht(s.amount)} · ${s.score}/10`;
+}
+
+function newsLines(scores) {
+  const lines = [];
+  // Only holdings that actually have something written about them: a ticker
+  // with an empty news column adds a heading and nothing under it.
+  for (const s of scores.filter((x) => x.newsPositive || x.newsNegative || x.reason)) {
+    lines.push(`${s.ticker} ${s.score}/10`);
+    if (s.reason) lines.push(`  ${s.reason}`);
+    if (s.newsPositive) lines.push(`  ✅ ${s.newsPositive}`);
+    if (s.newsNegative) lines.push(`  ⚠️ ${s.newsNegative}`);
+    lines.push('');
+  }
+  return lines;
+}
+
+function newsReply(data) {
+  const { dcaScores, dashboard } = data;
+  if (!dcaScores?.length) {
+    return [
+      `ข่าวหุ้น ${dashboard.month}`,
+      '',
+      'ยังไม่มีข่าวของเดือนนี้ในชีต 20_DCA_SCORE',
+      'ขอให้ Claude อัปเดตข่าวประจำเดือนก่อน',
+    ].join('\n');
+  }
+
+  const lines = newsLines(dcaScores);
+  if (!lines.length) {
+    return `ข่าวหุ้น ${dashboard.month}\n\nมีคะแนนแล้ว แต่ยังไม่ได้กรอกข่าวและเหตุผล`;
+  }
+  return [`ข่าวหุ้น ${dashboard.month}`, '', ...lines].join('\n').trim();
+}
+
 function dcaReply(data) {
   const { dca, dcaScores, dashboard } = data;
   const lines = [`DCA ${dashboard.month}`];
 
   if (dca?.length) {
-    lines.push('');
+    lines.push('', 'แผนเดือนนี้');
     for (const d of dca) {
       const mark = d.percentage >= 100 ? '✓' : '…';
       lines.push(`${mark} ${d.label} ${baht(d.actual)} / ${baht(d.plan)} (${d.percentage}%)`);
@@ -37,19 +81,16 @@ function dcaReply(data) {
   }
 
   if (dcaScores?.length) {
-    lines.push('', 'คะแนนรายตัว');
-    for (const s of dcaScores) {
-      lines.push(`${s.ticker} ${s.score}/10 · ${baht(s.amount)}`);
-      // The reason and the news are the whole point of the score; a bare
-      // number tells the reader nothing about why it was set there.
-      if (s.reason) lines.push(`  ${s.reason}`);
-      if (s.newsPositive) lines.push(`  + ${s.newsPositive}`);
-      if (s.newsNegative) lines.push(`  − ${s.newsNegative}`);
-    }
+    const rated = [...dcaScores].sort((a, b) => b.resultPct - a.resultPct);
+    lines.push('', 'ผลตอบแทนตั้งแต่ซื้อ');
+    for (const s of rated) lines.push(performanceLine(s));
+
+    const news = newsLines(dcaScores);
+    if (news.length) lines.push('', 'ข่าวและเหตุผล', ...news);
   }
 
   if (lines.length === 1) lines.push('', 'ยังไม่มีแผน DCA ของเดือนนี้ในชีต');
-  return lines.join('\n');
+  return lines.join('\n').trim();
 }
 
 function summaryReply(data) {
@@ -79,12 +120,14 @@ const HELP = [
   'บันทึกรายรับ — เงินเดือน 18945',
   '',
   'สรุป — ยอดเงินและงบเดือนนี้',
-  'หุ้น — แผน DCA คะแนน และข่าว',
+  'หุ้น — แผน DCA ผลตอบแทน และข่าว',
+  'ข่าว — เฉพาะข่าวและเหตุผลรายตัว',
   'ช่วย — ข้อความนี้',
 ].join('\n');
 
 export function commandReply(name, data) {
   if (name === 'help') return HELP;
+  if (name === 'news') return newsReply(data);
   if (name === 'dca') return dcaReply(data);
   if (name === 'summary') return summaryReply(data);
   return HELP;
