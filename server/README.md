@@ -234,6 +234,23 @@ back to `Other`; a message that matched no category word is still recorded,
 marked `Low` confidence so review sees it first. A message with no number at
 all is kept as raw text with the same status.
 
+### Picking the account
+
+A message names the amount but almost never an account the sheet recognises,
+and a row with no account attached moves no balance. So the bot asks, and the
+answer is a tap: the reply carries a quick-reply button per active account.
+Spending takes one tap and books immediately; a transfer or a trade has two
+ends, so the first tap asks for the second.
+
+The answers ride in each button's postback data rather than being held on the
+server, so nothing is remembered between taps and a restart mid-conversation
+cannot lose an answer already given. Labels are capped at LINE's 20
+characters, and the account already worked out — from an account number in
+the message, or the ใช้จ่ายรายวัน account for spending — is offered first.
+
+Typing an account number still works and skips a tap. The pickers on the
+More screen remain for anything left unanswered.
+
 ### Asking the bot
 
 A message that carries no number is a question, not spending:

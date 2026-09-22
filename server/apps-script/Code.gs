@@ -56,7 +56,8 @@ function doPost(e) {
         return reply({ ok: false, error: 'rows array is required' });
       }
       return withLock(function () {
-        return reply({ ok: true, written: appendInbox(body.rows) });
+        var ids = appendInbox(body.rows);
+        return reply({ ok: true, written: ids.length, ids: ids });
       });
     }
 
@@ -249,7 +250,9 @@ function appendInbox(rows) {
   });
 
   sheet.getRange(startRow, 2, values.length, values[0].length).setValues(values);
-  return values.length;
+  // The ids go back so the bot can attach its account buttons to the row it
+  // just created; a count alone cannot say which row is which.
+  return values.map(function (v) { return v[0]; });
 }
 
 const TX_TAB = '04_TRANSACTIONS';

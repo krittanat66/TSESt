@@ -8,7 +8,8 @@ import cors from 'cors';
 import { fetchSheetValues } from './sheets.js';
 import { mapSheetsToAppData } from './mapper.js';
 import { writeDcaScores } from './dca-writer.js';
-import { verifySignature, buildInboxRows, replyText } from './line-webhook.js';
+import { verifySignature, buildInboxRows, buildPostbacks, replyText } from './line-webhook.js';
+import { accountButtons, needsTwoAccounts, orderAccounts } from './line-buttons.js';
 import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
 import { commandReply, dcaDigest } from './line-commands.js';
 
@@ -142,6 +143,12 @@ app.post('/api/line-webhook', async (req, res) => {
   // rows. The delivery is acknowledged first and the write runs after.
   res.json({ ok: true });
 
+  // A tap on an account button finishes a row that is already saved.
+  const taps = buildPostbacks(req.body?.events);
+  if (taps.length) {
+    await Promise.all(taps.map((t) => handleAccountTap(t)));
+  }
+
   const rows = buildInboxRows(req.body?.events);
   if (!rows.length) return undefined;
 
@@ -152,9 +159,13 @@ app.post('/api/line-webhook', async (req, res) => {
   // a row with none attached can never move a balance. Two things are tried
   // before falling back to the reviewer: an account number typed in the
   // message, then the account 03_ACCOUNTS marks ใช้จ่ายรายวัน for spending.
+  // Accounts money can sit in or move between — what the buttons offer.
+  let pickable = [];
+
   if (entries.length) {
     try {
       const data = await getWealthData();
+      pickable = data.accounts.filter((a) => a.status === 'Active');
       const byNumber = new Map(
         data.accounts.filter((a) => a.accountNumber).map((a) => [a.accountNumber, a.name])
       );
@@ -179,9 +190,10 @@ app.post('/api/line-webhook', async (req, res) => {
   // true, and the row would be lost with nobody aware of it.
   let saved = true;
   let writeError = '';
+  let writtenIds = [];
   if (entries.length) {
     try {
-      await writeInboxRows(entries);
+      writtenIds = await writeInboxRows(entries);
       cache.clear();
     } catch (err) {
       saved = false;
@@ -190,12 +202,27 @@ app.post('/api/line-webhook', async (req, res) => {
     }
   }
 
-  const replies = entries.map((r) =>
-    replyToLine(
+  // Every saved row is answered with the account question, because a row with
+  // no account moves no balance and typing an account number into a chat is
+  // exactly the friction the bot exists to remove.
+  const replies = entries.map((r, i) => {
+    if (!saved) {
+      return replyToLine(
+        r.replyToken,
+        `บันทึกไม่สำเร็จ — เขียนลงชีตไม่ได้\n${writeError}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`
+      );
+    }
+    const inboxId = writtenIds[i];
+    if (!inboxId || !r.amount) return replyToLine(r.replyToken, replyText(r));
+
+    const two = needsTwoAccounts(r.transactionType);
+    const question = two ? 'จ่ายจากบัญชีไหน' : 'หักจากบัญชีไหน';
+    return replyToLine(
       r.replyToken,
-      saved ? replyText(r) : `บันทึกไม่สำเร็จ — เขียนลงชีตไม่ได้\n${writeError}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`
-    )
-  );
+      `${replyText(r)}\n\n${question}`,
+      accountButtons(two ? 'a' : 'e', inboxId, orderAccounts(pickable, r.account))
+    );
+  });
 
   if (commands.length) {
     try {
@@ -232,6 +259,41 @@ app.post('/api/dca-notify', requirePasscode, async (_req, res) => {
     res.status(502).json({ error: err.message });
   }
 });
+
+/**
+ * One tap on an account button.
+ *
+ * Spending needs one account and the row can be booked on the first tap. A
+ * transfer or a trade has two ends, so the first tap asks for the second and
+ * carries the first answer in the next button's data — nothing is held here
+ * between taps, and a restart mid-conversation cannot lose an answer.
+ */
+async function handleAccountTap({ step, inboxId, answers, replyToken }) {
+  const [first, second] = answers;
+  try {
+    if (step === 'a' && first) {
+      const data = await getWealthData();
+      const pickable = data.accounts.filter((a) => a.status === 'Active');
+      return replyToLine(
+        replyToken,
+        `จาก ${first}\n\nเข้าบัญชีไหน`,
+        accountButtons('b', inboxId, pickable, [first])
+      );
+    }
+
+    const source = first;
+    const destination = step === 'b' ? second : '';
+    if (!source) return replyToLine(replyToken, 'ไม่ทราบว่าเลือกบัญชีไหน ลองใหม่อีกครั้ง');
+
+    const result = await reviewInboxRow(inboxId, 'confirm', { source, destination });
+    cache.clear();
+    const where = destination ? `${source} → ${destination}` : source;
+    return replyToLine(replyToken, `ลงบัญชีแล้ว ${where}\n${result.txId ?? ''}`.trim());
+  } catch (err) {
+    console.error('line-webhook: tap failed', err.message);
+    return replyToLine(replyToken, `ลงบัญชีไม่สำเร็จ — ${err.message}`);
+  }
+}
 
 /**
  * Confirms or rejects one inbox row. Confirming is what finally writes a

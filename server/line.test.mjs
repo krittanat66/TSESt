@@ -102,6 +102,8 @@ const transferRow = buildInboxRows([
 check(!replyText(transferRow).includes('-4,000'), 'a transfer is not shown as a loss');
 check(replyText(transferRow).includes('ย้ายเงิน'), 'a transfer says so');
 check(replyText(rows[1]).includes('ข้าว 120'), 'failure reply shows the expected format');
+// The account buttons follow in the same reply, so nothing points at the app.
+check(!replyText(rows[0]).includes('แอป'), 'the reply no longer sends you to the app');
 
 // --- commands ------------------------------------------------------------
 import { matchCommand, commandReply, dcaDigest } from './line-commands.js';
@@ -166,6 +168,45 @@ check(!sum.includes('PVD'), 'summary omits committed categories');
 
 check(commandReply('help', data).includes('ข้าว 120'), 'help shows the format');
 check(dcaDigest(data).includes('NVDA'), 'digest reuses the dca reply');
+
+// --- account buttons -----------------------------------------------------
+import { buildPostbacks } from './line-webhook.js';
+import { buttonLabel, encode, decode, accountButtons, needsTwoAccounts, orderAccounts }
+  from './line-buttons.js';
+
+// LINE caps a quick-reply label at 20 characters.
+check(buttonLabel('SCB Salary Account') === 'SCB Salary', `label: ${buttonLabel('SCB Salary Account')}`);
+check(buttonLabel('SCB Emergency Reserve Account').length <= 20, 'long name fits the cap');
+check(buttonLabel('Dime Save THB') === 'Dime Save THB', 'short name is untouched');
+
+check(needsTwoAccounts('Transfer') && needsTwoAccounts('Buy') && needsTwoAccounts('Sell'),
+  'transfers and trades have two ends');
+check(!needsTwoAccounts('Expense'), 'spending has one');
+
+const accts = [
+  { id: 'A', name: 'SCB Salary Account' },
+  { id: 'B', name: 'SCB Daily Living Account' },
+  { id: 'C', name: 'SCB Emergency Reserve Account' },
+];
+// The account already worked out goes first so the common tap is the top one.
+check(orderAccounts(accts, 'SCB Daily Living Account')[0].name === 'SCB Daily Living Account',
+  'the resolved account is offered first');
+
+const qr = accountButtons('a', 'INBOX-0007', accts);
+check(qr.items.length === 3, `button count: ${qr.items.length}`);
+check(qr.items[0].action.type === 'postback', 'buttons are postbacks');
+// Everything needed to finish the row rides in the data, so no state is kept.
+const round = decode(qr.items[0].action.data);
+check(round.step === 'a' && round.inboxId === 'INBOX-0007', `decoded: ${JSON.stringify(round)}`);
+check(round.answers[0] === 'SCB Salary Account', 'the answer rides in the data');
+check(decode(encode('b', 'X', ['one', 'two'])).answers.length === 2, 'two answers survive');
+
+const taps = buildPostbacks([
+  { type: 'postback', postback: { data: 'a|INBOX-0007|SCB Salary Account' }, replyToken: 'p1' },
+  { type: 'message', message: { type: 'text', text: 'ข้าว 120' }, replyToken: 'm1' },
+]);
+check(taps.length === 1, `taps: ${taps.length}`);
+check(taps[0].step === 'a' && taps[0].replyToken === 'p1', 'tap carries its reply token');
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

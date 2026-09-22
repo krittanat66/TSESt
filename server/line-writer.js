@@ -1,3 +1,7 @@
+// Overridable so the reply payload can be inspected against a local stand-in;
+// nothing but a test ever sets it.
+const LINE_API = process.env.LINE_API_BASE || 'https://api.line.me';
+
 // Posts inbox rows through the Apps Script Web App, the same write path the
 // DCA scores use — the Sheets API key is read-only.
 
@@ -20,7 +24,7 @@ export async function writeInboxRows(rows) {
   if (!res.ok || body.ok === false) {
     throw new Error(body.error || `Apps Script responded ${res.status}`);
   }
-  return body.written ?? rows.length;
+  return body.ids ?? [];
 }
 
 // Confirm moves a reviewed row into 04_TRANSACTIONS; reject marks it and
@@ -55,18 +59,22 @@ export async function reviewInboxRow(inboxId, action, accounts = {}) {
 
 // LINE's reply token is single-use and expires in about a minute, so a failed
 // reply is logged rather than retried — the row is already saved either way.
-export async function replyToLine(replyToken, text) {
+export async function replyToLine(replyToken, text, quickReply = null) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token || !replyToken) return false;
 
-  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+  const message = { type: 'text', text };
+  if (quickReply) message.quickReply = quickReply;
+
+  const res = await fetch(`${LINE_API}/v2/bot/message/reply`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ replyToken, messages: [{ type: 'text', text }] }),
+    body: JSON.stringify({ replyToken, messages: [message] }),
   });
+  if (!res.ok) console.error('line reply failed', res.status, await res.text().catch(() => ''));
   return res.ok;
 }
 
@@ -76,7 +84,7 @@ export async function broadcastToLine(text) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token) throw new Error('LINE_CHANNEL_ACCESS_TOKEN is not set.');
 
-  const res = await fetch('https://api.line.me/v2/bot/message/broadcast', {
+  const res = await fetch(`${LINE_API}/v2/bot/message/broadcast`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ messages: [{ type: 'text', text }] }),

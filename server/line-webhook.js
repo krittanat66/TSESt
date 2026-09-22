@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { parseLineMessage } from './line-parser.js';
 import { matchCommand } from './line-commands.js';
+import { decode } from './line-buttons.js';
 
 // LINE signs every delivery with the channel secret. Without checking it the
 // endpoint is a public write into the sheet for anyone who finds the URL, so
@@ -16,6 +17,14 @@ export function verifySignature(rawBody, signature, secret) {
   }
   if (given.length !== expected.length) return false;
   return timingSafeEqual(given, expected);
+}
+
+// A tap on an account button. Carries everything needed to finish the row,
+// so no conversation state is held anywhere.
+export function buildPostbacks(events) {
+  return (events ?? [])
+    .filter((e) => e?.type === 'postback' && e?.postback?.data)
+    .map((e) => ({ ...decode(e.postback.data), replyToken: e.replyToken ?? '' }));
 }
 
 export function buildInboxRows(events) {
@@ -80,13 +89,13 @@ export function replyText(row) {
   // A transfer moves money without spending or earning it, so it gets neither
   // sign — showing "-500" for money you still have reads as a loss.
   if (row.transactionType === 'Transfer') {
-    return `บันทึกแล้ว ย้ายเงิน ${amount} บาท (ไม่นับเป็นรายจ่าย)\nรอยืนยันในแอป`;
+    return `บันทึกแล้ว ย้ายเงิน ${amount} บาท (ไม่นับเป็นรายจ่าย)`;
   }
   if (row.transactionType === 'Buy' || row.transactionType === 'Sell') {
     const verb = row.transactionType === 'Buy' ? 'ซื้อ' : 'ขาย';
     const unit = row.currency === 'USD' ? 'USD' : 'บาท';
-    return `บันทึกแล้ว ${verb} ${row.asset} ${amount} ${unit}\nรอยืนยันในแอป`;
+    return `บันทึกแล้ว ${verb} ${row.asset} ${amount} ${unit}`;
   }
   const sign = row.transactionType === 'Income' ? '+' : '-';
-  return `บันทึกแล้ว ${sign}${amount} บาท · ${row.category}\nรอยืนยันในแอป`;
+  return `บันทึกแล้ว ${sign}${amount} บาท · ${row.category}`;
 }
