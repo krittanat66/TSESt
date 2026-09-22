@@ -40,6 +40,31 @@ for (const text of [
   check(p.category === 'Transfer', `${text}: category ${p.category}`);
 }
 
+// Buying and selling carry an asset, which expenses never do.
+const buy = parseLineMessage('ซื้อ NVDA 10 USD');
+check(buy.transactionType === 'Buy', `buy type: ${buy.transactionType}`);
+check(buy.asset === 'NVDA', `buy asset: ${buy.asset}`);
+check(buy.currency === 'USD' && buy.category === 'US Stocks', `buy market: ${buy.category}`);
+const sell = parseLineMessage('ขาย AAPL 5 USD');
+check(sell.transactionType === 'Sell' && sell.asset === 'AAPL', 'sell parsed');
+const setBuy = parseLineMessage('ซื้อ PTT 1000');
+check(setBuy.category === 'SET' && setBuy.currency === 'THB', `baht trade: ${setBuy.category}`);
+// No ticker means no trade: "ซื้อของ" is shopping, and filing it as a position
+// would put a purchase that never happened in the portfolio.
+const shopping = parseLineMessage('ซื้อของ 250');
+check(shopping.transactionType === 'Expense', `ซื้อของ type: ${shopping.transactionType}`);
+check(shopping.category === 'Shopping', `ซื้อของ category: ${shopping.category}`);
+
+// An account number is a long digit run and would otherwise win the
+// largest-number rule outright.
+const withAccounts = parseLineMessage('โอน 500 จาก 0202890162 ไป 4080200690');
+check(withAccounts.amount === 500, `amount beside account numbers: ${withAccounts.amount}`);
+check(
+  withAccounts.accountNumbers.join(',') === '0202890162,4080200690',
+  `account numbers: ${withAccounts.accountNumbers}`
+);
+check(parseLineMessage('ข้าว 120').accountNumbers.length === 0, 'no false account numbers');
+
 // The largest number wins, so a quantity in the message is not read as money.
 check(parseLineMessage('ข้าว 2 จาน 120').amount === 120, 'quantity picked over amount');
 check(parseLineMessage('สวัสดี').ok === false, 'message with no amount should not parse');

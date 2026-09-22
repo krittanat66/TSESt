@@ -36,7 +36,7 @@ function InboxRow({ item, accounts }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
   const [source, setSource] = useState(item.account || '');
-  const [destination, setDestination] = useState('');
+  const [destination, setDestination] = useState(item.destinationAccount || '');
 
   const pending = item.status !== 'Confirmed' && item.status !== 'Rejected';
   // Nothing to book: a message the parser could not read has no amount, and
@@ -46,8 +46,10 @@ function InboxRow({ item, accounts }) {
   // A chat message rarely names the accounts, and a row booked without them
   // moves no balance — the whole point of recording it. The reviewer supplies
   // what the message could not, and a transfer needs both ends.
-  const isTransfer = item.type === 'Transfer';
-  const needsDestination = isTransfer;
+  // A trade moves money out of a funding account and into a holding, so it
+  // has two ends just like a transfer does.
+  const twoSided = ['Transfer', 'Buy', 'Sell'].includes(item.type);
+  const needsDestination = twoSided;
   const bookable = hasAmount && Boolean(source) && (!needsDestination || Boolean(destination));
 
   const run = async (action) => {
@@ -66,7 +68,10 @@ function InboxRow({ item, accounts }) {
       <div className="flex items-start justify-between mb-2">
         <div>
           <p className="text-text-secondary text-xs font-bold uppercase">{item.source}</p>
-          <p className="text-white font-semibold text-sm mt-1">{item.type || 'อ่านไม่ออก'}</p>
+          <p className="text-white font-semibold text-sm mt-1">
+            {item.type || 'อ่านไม่ออก'}
+            {item.asset ? ` · ${item.asset}` : ''}
+          </p>
         </div>
         <span
           className={`text-xs px-2 py-1 rounded font-semibold ${
@@ -98,7 +103,7 @@ function InboxRow({ item, accounts }) {
       {hasAmount && (
         <div className="mt-4 space-y-3">
           <AccountSelect
-            label={isTransfer ? 'โอนจากบัญชี' : 'หักจากบัญชี'}
+            label={twoSided ? 'จากบัญชี' : 'หักจากบัญชี'}
             value={source}
             onChange={setSource}
             accounts={accounts}

@@ -211,9 +211,25 @@ booked itself would be worse than one that waits to be confirmed.
 LINE → POST /api/line-webhook → Apps Script → 16_INBOX → (review) → 04_TRANSACTIONS
 ```
 
-Message format is `<what> <amount>`, e.g. `ข้าว 120`, `ค่าไฟ 1,250`,
-`เงินเดือน 18945`. The largest number in the message is taken as the amount,
-so `ข้าว 2 จาน 120` records 120. Categories map onto `05_CATEGORIES` and fall
+Message format is `<what> <amount>`:
+
+| พิมพ์ | ได้ |
+| --- | --- |
+| `ข้าว 120` | Expense · Food |
+| `เงินเดือน 18945` | Income · Salary |
+| `โอน 500 จาก 0202890162 ไป 4080200690` | Transfer, both accounts resolved |
+| `ซื้อ NVDA 10 USD` | Buy · US Stocks · NVDA |
+| `ขาย PTT 1000` | Sell · SET · PTT |
+
+The largest number is the amount, so `ข้าว 2 จาน 120` records 120. Runs of
+9–15 digits are read as account numbers, not money, and matched against the
+`Account Number` column in 03_ACCOUNTS — the surest way to name an account,
+since nicknames like "บัญชีรายเดือน" match nothing in the sheet. Fill that
+column in by hand; nothing here stores account numbers.
+
+A trade needs a ticker: `ซื้อของ 250` has none, so it stays shopping rather
+than becoming a position that was never bought. The market comes from the
+currency (USD → US Stocks, otherwise SET) and the reviewer can change it. Categories map onto `05_CATEGORIES` and fall
 back to `Other`; a message that matched no category word is still recorded,
 marked `Low` confidence so review sees it first. A message with no number at
 all is kept as raw text with the same status.

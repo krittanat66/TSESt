@@ -59,6 +59,8 @@ export function buildInboxRows(events) {
       amount: parsed.amount,
       currency: parsed.currency,
       category: parsed.category,
+      asset: parsed.asset ?? '',
+      accountNumbers: parsed.accountNumbers ?? [],
       confidence: parsed.confidence,
       // Everything waits for a human. Nothing reaches 04_TRANSACTIONS from here.
       status: 'Need Review',
@@ -79,6 +81,11 @@ export function replyText(row) {
   // sign — showing "-500" for money you still have reads as a loss.
   if (row.transactionType === 'Transfer') {
     return `บันทึกแล้ว ย้ายเงิน ${amount} บาท (ไม่นับเป็นรายจ่าย)\nรอยืนยันในแอป`;
+  }
+  if (row.transactionType === 'Buy' || row.transactionType === 'Sell') {
+    const verb = row.transactionType === 'Buy' ? 'ซื้อ' : 'ขาย';
+    const unit = row.currency === 'USD' ? 'USD' : 'บาท';
+    return `บันทึกแล้ว ${verb} ${row.asset} ${amount} ${unit}\nรอยืนยันในแอป`;
   }
   const sign = row.transactionType === 'Income' ? '+' : '-';
   return `บันทึกแล้ว ${sign}${amount} บาท · ${row.category}\nรอยืนยันในแอป`;

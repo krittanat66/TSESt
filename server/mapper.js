@@ -181,6 +181,9 @@ function buildAccounts(rows) {
         institution: str(r.Institution),
         type: str(r['Account Type']),
         purpose: str(r.Purpose),
+        // Digits only: a number typed with dashes or spaces should still match
+        // the same one pulled out of a chat message.
+        accountNumber: str(r['Account Number']).replace(/\D/g, ''),
         currency: str(r.Currency) || 'THB',
         balance: money(r['Current Balance']),
         availableBalance: money(r['Available Balance']) || money(r['Current Balance']),

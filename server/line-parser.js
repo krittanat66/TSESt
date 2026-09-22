@@ -25,6 +25,14 @@ const INCOME_WORDS = ['เงินเดือน', 'รายรับ', 'ไ�
 // Expense — ใช้ Type = Transfer เท่านั้น". Moving money between your own
 // accounts booked as spending would inflate the month's expenses by the
 // whole amount, so this is checked before income or expense.
+// Buying is recorded like any other message, but it carries an asset and a
+// market as well as an amount, so it cannot ride the expense path.
+const BUY_WORDS = ['ซื้อ', 'dca', 'buy'];
+const SELL_WORDS = ['ขาย', 'sell'];
+
+// Currency codes and common Thai-script noise that look like tickers.
+const NOT_TICKERS = new Set(['USD', 'THB', 'BTC', 'DCA', 'SET', 'LINE', 'PVD', 'ATM']);
+
 const TRANSFER_WORDS = [
   'โอน', 'เติมเงิน', 'ย้ายเงิน', 'เข้าบัญชี', 'ถอน', 'ฝากเงิน', 'transfer',
 ];
@@ -55,14 +63,60 @@ function findAmount(text) {
   return values.length ? Math.max(...values) : null;
 }
 
+// A bank account number in the message names the account far more reliably
+// than any nickname does, so anything that looks like one is pulled out and
+// matched against 03_ACCOUNTS by the caller.
+export function findAccountNumbers(raw) {
+  const text = String(raw ?? '');
+  return [...text.matchAll(/\b\d{9,15}\b/g)].map((m) => m[0]);
+}
+
+function findTicker(text) {
+  const found = [...text.matchAll(/\b[A-Z][A-Z0-9-]{0,9}\b/g)]
+    .map((m) => m[0])
+    .filter((t) => t.length >= 2 && !NOT_TICKERS.has(t));
+  return found[0] ?? '';
+}
+
 export function parseLineMessage(raw) {
   const text = String(raw ?? '').trim();
   if (!text) return { ok: false, error: 'empty' };
 
-  const lower = text.toLowerCase();
+  const accountNumbers = findAccountNumbers(text);
+
+  // An account number is a long run of digits and would otherwise win the
+  // "largest number is the amount" rule outright — "โอน 500 จาก 0202890162"
+  // would record four billion baht.
+  let spoken = text;
+  for (const n of accountNumbers) spoken = spoken.split(n).join(' ');
+
+  const lower = spoken.toLowerCase();
   const amount = findAmount(lower);
   if (amount === null) {
     return { ok: false, error: 'no-amount', text };
+  }
+  const foreign = /\busd\b|\$/.test(lower);
+
+  const isBuy = BUY_WORDS.some((w) => lower.includes(w));
+  const isSell = SELL_WORDS.some((w) => lower.includes(w));
+  const ticker = findTicker(spoken);
+  // A trade needs something traded. Without a ticker "ซื้อของ 250" is
+  // shopping, not a position, and filing it as one puts a purchase that never
+  // happened in the portfolio.
+  if ((isBuy || isSell) && ticker) {
+    return {
+      ok: true,
+      transactionType: isSell ? 'Sell' : 'Buy',
+      amount,
+      // Market is taken from the currency, which is the only signal the
+      // message carries; the reviewer sees the category and can change it.
+      currency: foreign ? 'USD' : 'THB',
+      category: foreign ? 'US Stocks' : 'SET',
+      asset: ticker,
+      confidence: 'High',
+      accountNumbers,
+      text,
+    };
   }
 
   if (TRANSFER_WORDS.some((w) => lower.includes(w))) {
@@ -73,6 +127,7 @@ export function parseLineMessage(raw) {
       currency: 'THB',
       category: 'Transfer',
       confidence: 'High',
+      accountNumbers,
       text,
     };
   }
@@ -95,6 +150,7 @@ export function parseLineMessage(raw) {
     currency: 'THB',
     category,
     confidence: matched ? 'High' : 'Low',
+    accountNumbers,
     text,
   };
 }

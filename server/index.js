@@ -148,21 +148,29 @@ app.post('/api/line-webhook', async (req, res) => {
   const commands = rows.filter((r) => r.command);
   const entries = rows.filter((r) => !r.command);
 
-  // A chat message names no account, so a booked expense would sit in the
-  // ledger attached to nothing and could never move a balance. Day-to-day
-  // spending comes out of the account 03_ACCOUNTS marks ใช้จ่ายรายวัน, so that
-  // is filled in here rather than guessed at confirm time.
-  if (entries.some((r) => r.transactionType === 'Expense')) {
+  // A chat message rarely names an account in a way the sheet recognises, and
+  // a row with none attached can never move a balance. Two things are tried
+  // before falling back to the reviewer: an account number typed in the
+  // message, then the account 03_ACCOUNTS marks ใช้จ่ายรายวัน for spending.
+  if (entries.length) {
     try {
-      const daily = (await getWealthData()).dashboard.cash?.dailyAccount;
-      if (daily) {
-        entries.forEach((r) => {
-          if (r.transactionType === 'Expense') r.account = daily;
-        });
+      const data = await getWealthData();
+      const byNumber = new Map(
+        data.accounts.filter((a) => a.accountNumber).map((a) => [a.accountNumber, a.name])
+      );
+      const daily = data.dashboard.cash?.dailyAccount;
+
+      for (const r of entries) {
+        const named = (r.accountNumbers ?? []).map((n) => byNumber.get(n)).filter(Boolean);
+        if (named[0]) r.account = named[0];
+        else if (r.transactionType === 'Expense' && daily) r.account = daily;
+        // A second number is the other end of a transfer; the reviewer still
+        // confirms it, but it arrives filled in.
+        if (named[1]) r.destinationAccount = named[1];
       }
     } catch (err) {
       // Not fatal: the row is still worth keeping, just unattributed.
-      console.error('line-webhook: could not resolve the daily account', err.message);
+      console.error('line-webhook: could not resolve accounts', err.message);
     }
   }
 
