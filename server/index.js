@@ -148,6 +148,24 @@ app.post('/api/line-webhook', async (req, res) => {
   const commands = rows.filter((r) => r.command);
   const entries = rows.filter((r) => !r.command);
 
+  // A chat message names no account, so a booked expense would sit in the
+  // ledger attached to nothing and could never move a balance. Day-to-day
+  // spending comes out of the account 03_ACCOUNTS marks ใช้จ่ายรายวัน, so that
+  // is filled in here rather than guessed at confirm time.
+  if (entries.some((r) => r.transactionType === 'Expense')) {
+    try {
+      const daily = (await getWealthData()).dashboard.cash?.dailyAccount;
+      if (daily) {
+        entries.forEach((r) => {
+          if (r.transactionType === 'Expense') r.account = daily;
+        });
+      }
+    } catch (err) {
+      // Not fatal: the row is still worth keeping, just unattributed.
+      console.error('line-webhook: could not resolve the daily account', err.message);
+    }
+  }
+
   // A failed write must not be answered with "บันทึกแล้ว". The sender would
   // stop keeping the receipt on the strength of a confirmation that is not
   // true, and the row would be lost with nobody aware of it.
