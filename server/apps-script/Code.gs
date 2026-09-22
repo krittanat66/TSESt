@@ -344,6 +344,95 @@ function rejectInbox(inboxId) {
   return inboxId;
 }
 
+const MONTHLY_TAB = '02_MONTHLY';
+const BUDGET_TAB = '10_BUDGET';
+
+/** First of the month, as a Date, for whatever month a cell holds. */
+function monthStart(v) {
+  var d = v instanceof Date ? v : new Date(v);
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+/**
+ * Copies a tab's last month block down for the month given, if it is not
+ * there yet. copyTo is used rather than setValues so every formula and format
+ * in the row comes with it — including the ones this project never sees.
+ *
+ * @param rowsPerMonth 1 for 02_MONTHLY, 6 for 10_BUDGET's category rows.
+ */
+function appendMonthBlock(sheet, wanted, rowsPerMonth, lastCol) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < FIRST_DATA_ROW) return 0;
+
+  var months = sheet.getRange(FIRST_DATA_ROW, 2, lastRow - FIRST_DATA_ROW + 1, 1).getValues();
+  var want = monthStart(wanted).getTime();
+  var lastFilled = -1;
+  for (var i = 0; i < months.length; i += 1) {
+    var v = months[i][0];
+    if (!v) continue;
+    lastFilled = FIRST_DATA_ROW + i;
+    if (monthStart(v).getTime() === want) return 0; // already there
+  }
+  if (lastFilled === -1) return 0;
+
+  var sourceTop = lastFilled - rowsPerMonth + 1;
+  var source = sheet.getRange(sourceTop, 2, rowsPerMonth, lastCol - 1);
+  var target = sheet.getRange(lastFilled + 1, 2, rowsPerMonth, lastCol - 1);
+  source.copyTo(target);
+
+  var firstOfMonth = monthStart(wanted);
+  for (var k = 0; k < rowsPerMonth; k += 1) {
+    sheet.getRange(lastFilled + 1 + k, 2).setValue(firstOfMonth);
+  }
+  return rowsPerMonth;
+}
+
+/**
+ * Makes sure this month has its rows in 02_MONTHLY and 10_BUDGET.
+ *
+ * Without them a new month has nowhere to land: the dashboard keeps showing
+ * the previous month and anything recorded for this one is invisible. Safe to
+ * run as often as you like — a month already present is left alone.
+ */
+function ensureCurrentMonthRows() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var now = new Date();
+  var added = 0;
+
+  var monthly = ss.getSheetByName(MONTHLY_TAB);
+  if (monthly) added += appendMonthBlock(monthly, now, 1, 16); // B..P
+
+  var budget = ss.getSheetByName(BUDGET_TAB);
+  // One row per category. The count is read from the last month present so a
+  // new category added by hand is carried forward too.
+  if (budget) {
+    var lastRow = budget.getLastRow();
+    var vals = budget.getRange(FIRST_DATA_ROW, 2, lastRow - FIRST_DATA_ROW + 1, 1).getValues();
+    var lastMonth = null;
+    var perMonth = 0;
+    for (var i = vals.length - 1; i >= 0; i -= 1) {
+      if (!vals[i][0]) continue;
+      var m = monthStart(vals[i][0]).getTime();
+      if (lastMonth === null) lastMonth = m;
+      if (m !== lastMonth) break;
+      perMonth += 1;
+    }
+    if (perMonth > 0) added += appendMonthBlock(budget, now, perMonth, 9); // B..I
+  }
+
+  Logger.log(added ? ('เพิ่ม ' + added + ' แถวสำหรับเดือนนี้') : 'เดือนนี้มีแถวอยู่แล้ว');
+  return added;
+}
+
+/** Adds the new month's rows on the 1st. Run once to install. */
+function installMonthRowTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'ensureCurrentMonthRows') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('ensureCurrentMonthRows').timeBased().onMonthDay(1).atHour(1).create();
+  Logger.log('ตั้งเวลาแล้ว: เพิ่มแถวเดือนใหม่ทุกวันที่ 1 ประมาณ 01:00');
+}
+
 /** Wipes every data row in the tab. Use to start clean after a bad run. */
 function clearAllRows() {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TAB);

@@ -232,6 +232,15 @@ The DCA answer reads 08_DCA_PLAN and 20_DCA_SCORE, including the Reason,
 News (+) and News (-) columns. Those are written by monthly research, not
 computed — the bot reports what is in the sheet and never invents a headline.
 
+### New month rows
+
+A month with no row in 02_MONTHLY and 10_BUDGET has nowhere to land: the
+dashboard keeps showing the previous month and anything recorded for the new
+one is invisible. `ensureCurrentMonthRows` copies the last month's block down
+— with `copyTo`, so every formula and format comes with it — and sets the new
+date. Run `installMonthRowTrigger` once and it happens on the 1st. Running it
+by hand is safe: a month already present is left alone.
+
 ### Monthly DCA reminder
 
 `POST /api/dca-notify` (app passcode) broadcasts the same DCA text to the
