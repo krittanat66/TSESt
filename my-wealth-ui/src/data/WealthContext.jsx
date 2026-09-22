@@ -92,6 +92,32 @@ export function WealthProvider({ children }) {
     }
   }, [load]);
 
+  // Confirming is what moves a message into the ledger, so the result has to
+  // be reported rather than assumed: a failure that looked like a success
+  // would leave the row pending with the viewer believing it was booked.
+  const reviewInbox = useCallback(
+    async (id, action) => {
+      const code = readPasscode();
+      try {
+        const res = await fetch(`${API_URL}/inbox/review`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(code ? { Authorization: `Bearer ${code}` } : {}),
+          },
+          body: JSON.stringify({ id, action }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) return { ok: false, error: body.error || `Server responded ${res.status}` };
+        await load();
+        return { ok: true, txId: body.txId };
+      } catch (err) {
+        return { ok: false, error: err.message };
+      }
+    },
+    [load]
+  );
+
   const value = useMemo(
     () => ({
       data,
@@ -101,8 +127,9 @@ export function WealthProvider({ children }) {
       locked,
       unlock: (code) => load(code),
       refresh: () => load(),
+      reviewInbox,
     }),
-    [data, loading, error, isLive, locked, load]
+    [data, loading, error, isLive, locked, load, reviewInbox]
   );
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>;

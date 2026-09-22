@@ -1,6 +1,103 @@
-import { ChevronRight, Inbox, Settings, PieChart, FileText, AlertCircle, Lock } from 'lucide-react';
+import { useState } from 'react';
+import { Check, ChevronRight, Inbox, Settings, PieChart, FileText, AlertCircle, Lock, X } from 'lucide-react';
 import { Header } from '../components/Navigation';
 import { useWealth } from '../data/WealthContext';
+
+
+const STATUS_STYLE = {
+  New: 'bg-cyan/20 text-cyan',
+  'Need Review': 'bg-warning/20 text-warning',
+  Confirmed: 'bg-emerald/20 text-emerald',
+  Rejected: 'bg-coral/20 text-coral',
+};
+
+function InboxRow({ item }) {
+  const { reviewInbox } = useWealth();
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState(null);
+
+  const pending = item.status !== 'Confirmed' && item.status !== 'Rejected';
+  // Nothing to book: a message the parser could not read has no amount, and
+  // confirming it would write a zero into the ledger.
+  const bookable = pending && item.amount > 0 && Boolean(item.type);
+
+  const run = async (action) => {
+    setBusy(action);
+    setError(null);
+    const res = await reviewInbox(item.id, action);
+    setBusy('');
+    if (!res.ok) setError(res.error);
+  };
+
+  return (
+    <div className="bg-bg-card rounded-lg p-4 border border-border-soft">
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <p className="text-text-secondary text-xs font-bold uppercase">{item.source}</p>
+          <p className="text-white font-semibold text-sm mt-1">{item.type || 'อ่านไม่ออก'}</p>
+        </div>
+        <span
+          className={`text-xs px-2 py-1 rounded font-semibold ${
+            STATUS_STYLE[item.status] ?? 'bg-bg-elevated text-text-secondary'
+          }`}
+        >
+          {item.status}
+        </span>
+      </div>
+
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-white text-xl font-bold">
+            {item.amount > 0 ? `฿${item.amount.toLocaleString()}` : '—'}
+          </p>
+          <p className="text-text-tertiary text-xs">
+            {[item.date, item.category].filter(Boolean).join(' • ')}
+          </p>
+        </div>
+        {item.confidence > 0 && (
+          <p className="text-text-tertiary text-xs">{(item.confidence * 100).toFixed(0)}%</p>
+        )}
+      </div>
+
+      {item.rawMessage && (
+        <p className="text-text-secondary text-xs mt-2 italic">“{item.rawMessage}”</p>
+      )}
+
+      {pending && (
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={() => run('confirm')}
+            disabled={!bookable || Boolean(busy)}
+            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-emerald/15 border border-emerald/50 text-emerald font-semibold text-sm disabled:opacity-40"
+          >
+            <Check size={16} />
+            {busy === 'confirm' ? 'กำลังบันทึก…' : 'ยืนยัน'}
+          </button>
+          <button
+            onClick={() => run('reject')}
+            disabled={Boolean(busy)}
+            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-bg-elevated border border-border-soft text-text-secondary font-semibold text-sm disabled:opacity-40"
+          >
+            <X size={16} />
+            {busy === 'reject' ? 'กำลังลบ…' : 'ทิ้ง'}
+          </button>
+        </div>
+      )}
+
+      {!bookable && pending && (
+        <p className="text-warning text-xs mt-2">
+          ไม่มีจำนวนเงินหรือประเภท — แก้ในชีต 16_INBOX ก่อนจึงจะยืนยันได้
+        </p>
+      )}
+
+      {item.status === 'Confirmed' && (
+        <p className="text-emerald text-xs mt-2">เข้า 04_TRANSACTIONS แล้ว</p>
+      )}
+
+      {error && <p className="text-coral text-xs mt-2">{error}</p>}
+    </div>
+  );
+}
 
 export function MoreScreen() {
   const { data } = useWealth();
@@ -31,39 +128,13 @@ export function MoreScreen() {
             )}
           </h2>
           <div className="space-y-2">
-            {inboxItems.map(item => (
-              <button
-                key={item.id}
-                className="w-full bg-bg-card rounded-lg p-4 border border-border-soft hover:border-cyan transition-colors text-left"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <p className="text-text-secondary text-xs font-bold uppercase">{item.source}</p>
-                    <p className="text-white font-semibold text-sm mt-1">{item.type}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded font-semibold ${
-                    item.status === 'New' ? 'bg-cyan/20 text-cyan' :
-                    item.status === 'Need Review' ? 'bg-warning/20 text-warning' :
-                    'bg-emerald/20 text-emerald'
-                  }`}>
-                    {item.status}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white text-xl font-bold">
-                      ฿{item.amount.toLocaleString()}
-                    </p>
-                    <p className="text-text-tertiary text-xs">{item.date} • {item.account}</p>
-                  </div>
-                  <p className="text-text-tertiary text-xs">{(item.confidence * 100).toFixed(0)}%</p>
-                </div>
-              </button>
+            {inboxItems.map((item) => (
+              <InboxRow key={item.id} item={item} />
             ))}
+            {!inboxItems.length && (
+              <p className="text-text-tertiary text-sm">ยังไม่มีรายการรอตรวจ</p>
+            )}
           </div>
-          <button className="w-full mt-4 py-3 bg-bg-card border border-cyan/50 rounded-lg text-cyan font-semibold hover:bg-cyan/10 transition-colors">
-            View All Inbox Items →
-          </button>
         </div>
 
         {/* Menu Items */}

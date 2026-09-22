@@ -27,6 +27,19 @@ for (const [text, type, amount, category, confidence] of cases) {
   check(p.confidence === confidence, `${text}: confidence ${p.confidence}`);
 }
 
+// Moving money between your own accounts is neither income nor spending.
+// Booked as an expense it would inflate the month by the whole amount.
+for (const text of [
+  'บัญชีเงินเติมเงินเข้าบัญชีค่าใช้จ่าย 500บาท',
+  'โอนเข้า Dime 4000',
+  'ถอนเงิน 2000',
+  'ย้ายเงินไปบัญชีออม 1000',
+]) {
+  const p = parseLineMessage(text);
+  check(p.transactionType === 'Transfer', `${text}: type ${p.transactionType}`);
+  check(p.category === 'Transfer', `${text}: category ${p.category}`);
+}
+
 // The largest number wins, so a quantity in the message is not read as money.
 check(parseLineMessage('ข้าว 2 จาน 120').amount === 120, 'quantity picked over amount');
 check(parseLineMessage('สวัสดี').ok === false, 'message with no amount should not parse');
@@ -56,6 +69,13 @@ check(rows[1].error === 'no-amount' && rows[1].amount === '', 'unparsed message 
 // Nothing from a chat message may skip review.
 check(rows.every((r) => r.status === 'Need Review'), 'every row must wait for review');
 check(replyText(rows[0]).includes('120'), 'reply names the amount');
+check(replyText(rows[0]).includes('-120'), 'an expense is shown as money out');
+const transferRow = buildInboxRows([
+  { type: 'message', message: { type: 'text', text: 'โอนเข้า Dime 4000' }, replyToken: 'x' },
+])[0];
+// No minus sign: the money is still yours, just somewhere else.
+check(!replyText(transferRow).includes('-4,000'), 'a transfer is not shown as a loss');
+check(replyText(transferRow).includes('ย้ายเงิน'), 'a transfer says so');
 check(replyText(rows[1]).includes('ข้าว 120'), 'failure reply shows the expected format');
 
 // --- commands ------------------------------------------------------------

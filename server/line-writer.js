@@ -23,6 +23,34 @@ export async function writeInboxRows(rows) {
   return body.written ?? rows.length;
 }
 
+// Confirm moves a reviewed row into 04_TRANSACTIONS; reject marks it and
+// leaves the ledger alone. Both go through Apps Script for the same reason
+// the inbox write does — the Sheets API key cannot write.
+export async function reviewInboxRow(inboxId, action) {
+  const url = process.env.APPS_SCRIPT_URL;
+  const token = process.env.APPS_SCRIPT_TOKEN;
+  if (!url || !token) {
+    throw new Error('Missing APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN. See server/README.md.');
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      token,
+      kind: action === 'confirm' ? 'inbox-confirm' : 'inbox-reject',
+      inboxId,
+    }),
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body.ok === false) {
+    throw new Error(body.error || `Apps Script responded ${res.status}`);
+  }
+  return body;
+}
+
 // LINE's reply token is single-use and expires in about a minute, so a failed
 // reply is logged rather than retried — the row is already saved either way.
 export async function replyToLine(replyToken, text) {

@@ -60,6 +60,20 @@ function doPost(e) {
       });
     }
 
+    if (body.kind === 'inbox-confirm') {
+      if (!body.inboxId) return reply({ ok: false, error: 'inboxId is required' });
+      return withLock(function () {
+        return reply({ ok: true, txId: confirmInbox(body.inboxId) });
+      });
+    }
+
+    if (body.kind === 'inbox-reject') {
+      if (!body.inboxId) return reply({ ok: false, error: 'inboxId is required' });
+      return withLock(function () {
+        return reply({ ok: true, rejected: rejectInbox(body.inboxId) });
+      });
+    }
+
     if (!body.month || !Array.isArray(body.rows) || !body.rows.length) {
       return reply({ ok: false, error: 'month and a non-empty rows array are required' });
     }
@@ -233,6 +247,101 @@ function appendInbox(rows) {
 
   sheet.getRange(startRow, 2, values.length, values[0].length).setValues(values);
   return values.length;
+}
+
+const TX_TAB = '04_TRANSACTIONS';
+
+/** Row index in 16_INBOX for an Inbox ID, or -1. */
+function findInboxRow(sheet, inboxId) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < FIRST_DATA_ROW) return -1;
+  var ids = sheet.getRange(FIRST_DATA_ROW, 2, lastRow - FIRST_DATA_ROW + 1, 1).getValues();
+  for (var i = 0; i < ids.length; i += 1) {
+    if (String(ids[i][0]).trim() === String(inboxId).trim()) return FIRST_DATA_ROW + i;
+  }
+  return -1;
+}
+
+/**
+ * Moves one reviewed inbox row into 04_TRANSACTIONS and marks it Confirmed.
+ *
+ * This is the only path from a chat message to the ledger, and it runs only
+ * when a person asks for it. A row already confirmed is refused rather than
+ * booked twice — the app can retry a request whose reply was lost.
+ */
+function confirmInbox(inboxId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var inbox = ss.getSheetByName(INBOX_TAB);
+  if (!inbox) throw new Error('no tab ' + INBOX_TAB);
+
+  var row = findInboxRow(inbox, inboxId);
+  if (row === -1) throw new Error('inbox row not found: ' + inboxId);
+
+  // B..U, the inbox header's own span.
+  var v = inbox.getRange(row, 2, 1, 20).getValues()[0];
+  var status = String(v[16] || '').trim();
+  if (status === 'Confirmed') throw new Error(inboxId + ' is already confirmed');
+
+  var type = String(v[6] || '').trim();
+  var amount = Number(v[7]) || 0;
+  if (!type || !amount) throw new Error(inboxId + ' has no type or amount to book');
+
+  var tx = ss.getSheetByName(TX_TAB);
+  if (!tx) throw new Error('no tab ' + TX_TAB);
+
+  var lastTx = tx.getLastRow();
+  var nextNum = 1;
+  if (lastTx >= FIRST_DATA_ROW) {
+    var txIds = tx.getRange(FIRST_DATA_ROW, 2, lastTx - FIRST_DATA_ROW + 1, 1).getValues();
+    for (var j = 0; j < txIds.length; j += 1) {
+      var m = String(txIds[j][0] || '').match(/^TX-(\d+)$/);
+      if (m && Number(m[1]) >= nextNum) nextNum = Number(m[1]) + 1;
+    }
+  }
+  var txId = 'TX-' + ('00000' + nextNum).slice(-5);
+  var when = v[9] instanceof Date ? v[9] : new Date();
+  var currency = String(v[8] || 'THB').trim();
+
+  // 04_TRANSACTIONS header order, B..X.
+  tx.getRange(Math.max(lastTx + 1, FIRST_DATA_ROW), 2, 1, 23).setValues([[
+    txId,
+    when,
+    Utilities.formatDate(when, ss.getSpreadsheetTimeZone(), 'HH:mm'),
+    type,
+    String(v[10] || ''),  // Source Account
+    '',                   // Destination Account
+    amount,
+    currency,
+    currency === 'THB' ? 1 : '',
+    currency === 'THB' ? amount : '',
+    String(v[11] || ''),  // Category
+    '',                   // Subcategory
+    String(v[12] || ''),  // Asset
+    v[13] || '',          // Quantity
+    v[14] || '',          // Price
+    '', '', '',           // Fee, Realized P/L, Tax Classification
+    String(v[4] || ''),   // Note — the raw message it came from
+    'LINE',
+    'Confirmed',
+    '', '',
+  ]]);
+
+  // 16_INBOX spans B..U: Status is R (18), then Reviewed By, Review Date and
+  // Linked TX ID. Off by one here overwrites Confidence instead.
+  inbox.getRange(row, 18).setValue('Confirmed');
+  inbox.getRange(row, 19, 1, 3).setValues([['app', new Date(), txId]]);
+  return txId;
+}
+
+/** Marks an inbox row Rejected. Nothing reaches the ledger. */
+function rejectInbox(inboxId) {
+  var inbox = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INBOX_TAB);
+  if (!inbox) throw new Error('no tab ' + INBOX_TAB);
+  var row = findInboxRow(inbox, inboxId);
+  if (row === -1) throw new Error('inbox row not found: ' + inboxId);
+  inbox.getRange(row, 18).setValue('Rejected');
+  inbox.getRange(row, 19, 1, 2).setValues([['app', new Date()]]);
+  return inboxId;
 }
 
 /** Wipes every data row in the tab. Use to start clean after a bad run. */

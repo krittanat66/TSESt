@@ -9,7 +9,7 @@ import { fetchSheetValues } from './sheets.js';
 import { mapSheetsToAppData } from './mapper.js';
 import { writeDcaScores } from './dca-writer.js';
 import { verifySignature, buildInboxRows, replyText } from './line-webhook.js';
-import { writeInboxRows, replyToLine, broadcastToLine } from './line-writer.js';
+import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
 import { commandReply, dcaDigest } from './line-commands.js';
 
 const app = express();
@@ -204,6 +204,26 @@ app.post('/api/dca-notify', requirePasscode, async (_req, res) => {
     res.json({ ok: true, month: data.dashboard.monthKey });
   } catch (err) {
     res.status(502).json({ error: err.message });
+  }
+});
+
+/**
+ * Confirms or rejects one inbox row. Confirming is what finally writes a
+ * message into 04_TRANSACTIONS, so it is a deliberate act behind the app
+ * passcode and never something the webhook can do on its own.
+ */
+app.post('/api/inbox/review', requirePasscode, async (req, res) => {
+  const { id, action } = req.body ?? {};
+  if (!id || (action !== 'confirm' && action !== 'reject')) {
+    return res.status(400).json({ error: 'id and action (confirm|reject) are required' });
+  }
+  try {
+    const result = await reviewInboxRow(id, action);
+    // The sheet changed, so a cached read would show the row still pending.
+    cache.clear();
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
   }
 });
 

@@ -74,6 +74,12 @@ export function replyText(row) {
   if (row.error === 'no-amount') {
     return 'ไม่เจอจำนวนเงินในข้อความ ลองพิมพ์แบบนี้: ข้าว 120';
   }
+  const amount = Number(row.amount).toLocaleString('th-TH');
+  // A transfer moves money without spending or earning it, so it gets neither
+  // sign — showing "-500" for money you still have reads as a loss.
+  if (row.transactionType === 'Transfer') {
+    return `บันทึกแล้ว ย้ายเงิน ${amount} บาท (ไม่นับเป็นรายจ่าย)\nรอยืนยันในแอป`;
+  }
   const sign = row.transactionType === 'Income' ? '+' : '-';
-  return `บันทึกแล้ว ${sign}${Number(row.amount).toLocaleString('th-TH')} บาท · ${row.category}\nรอยืนยันในแอป`;
+  return `บันทึกแล้ว ${sign}${amount} บาท · ${row.category}\nรอยืนยันในแอป`;
 }

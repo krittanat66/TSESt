@@ -21,6 +21,14 @@ const CATEGORY_WORDS = [
 
 const INCOME_WORDS = ['เงินเดือน', 'รายรับ', 'ได้เงิน', 'โบนัส', 'ดอกเบี้ย', 'ปันผล', 'salary', 'bonus'];
 
+// 05_CATEGORIES: "Transfer ระหว่างบัญชีของตัวเอง ไม่นับเป็น Income และไม่นับเป็น
+// Expense — ใช้ Type = Transfer เท่านั้น". Moving money between your own
+// accounts booked as spending would inflate the month's expenses by the
+// whole amount, so this is checked before income or expense.
+const TRANSFER_WORDS = [
+  'โอน', 'เติมเงิน', 'ย้ายเงิน', 'เข้าบัญชี', 'ถอน', 'ฝากเงิน', 'transfer',
+];
+
 const INCOME_CATEGORY = [
   ['Salary', ['เงินเดือน', 'salary']],
   ['Bonus', ['โบนัส', 'bonus']],
@@ -55,6 +63,18 @@ export function parseLineMessage(raw) {
   const amount = findAmount(lower);
   if (amount === null) {
     return { ok: false, error: 'no-amount', text };
+  }
+
+  if (TRANSFER_WORDS.some((w) => lower.includes(w))) {
+    return {
+      ok: true,
+      transactionType: 'Transfer',
+      amount,
+      currency: 'THB',
+      category: 'Transfer',
+      confidence: 'High',
+      text,
+    };
   }
 
   const isIncome = INCOME_WORDS.some((w) => lower.includes(w));
