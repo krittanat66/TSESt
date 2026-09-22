@@ -148,16 +148,28 @@ app.post('/api/line-webhook', async (req, res) => {
   const commands = rows.filter((r) => r.command);
   const entries = rows.filter((r) => !r.command);
 
+  // A failed write must not be answered with "บันทึกแล้ว". The sender would
+  // stop keeping the receipt on the strength of a confirmation that is not
+  // true, and the row would be lost with nobody aware of it.
+  let saved = true;
+  let writeError = '';
   if (entries.length) {
     try {
       await writeInboxRows(entries);
       cache.clear();
     } catch (err) {
+      saved = false;
+      writeError = err.message;
       console.error('line-webhook: write failed', err.message);
     }
   }
 
-  const replies = entries.map((r) => replyToLine(r.replyToken, replyText(r)));
+  const replies = entries.map((r) =>
+    replyToLine(
+      r.replyToken,
+      saved ? replyText(r) : `บันทึกไม่สำเร็จ — เขียนลงชีตไม่ได้\n${writeError}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`
+    )
+  );
 
   if (commands.length) {
     try {
