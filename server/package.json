@@ -8,7 +8,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node mapper.test.mjs"
+    "test": "node mapper.test.mjs && node line.test.mjs && npm run check:gs",
+    "check:gs": "node -e \"new Function(require('node:fs').readFileSync('apps-script/Code.gs','utf8'))\""
   },
   "dependencies": {
     "cors": "^2.8.5",

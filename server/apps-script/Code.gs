@@ -26,6 +26,19 @@ const HEADERS = [
 
 const INBOX_TAB = '16_INBOX';
 
+// One writer at a time: a second call arriving mid-write would double a month
+// or interleave inbox rows. Both write paths share it, so neither can be given
+// its own lock variable and collide with the other's.
+function withLock(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    return fn();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
@@ -42,29 +55,20 @@ function doPost(e) {
       if (!Array.isArray(body.rows) || !body.rows.length) {
         return reply({ ok: false, error: 'rows array is required' });
       }
-      var lock = LockService.getScriptLock();
-      lock.waitLock(30000);
-      try {
+      return withLock(function () {
         return reply({ ok: true, written: appendInbox(body.rows) });
-      } finally {
-        lock.releaseLock();
-      }
+      });
     }
 
     if (!body.month || !Array.isArray(body.rows) || !body.rows.length) {
       return reply({ ok: false, error: 'month and a non-empty rows array are required' });
     }
 
-    // One writer at a time: a second call mid-rewrite would double the month.
-    const lock = LockService.getScriptLock();
-    lock.waitLock(30000);
-    try {
+    return withLock(function () {
       const sheet = ensureTab();
       const written = replaceMonth(sheet, body.month, body.rows);
       return reply({ ok: true, month: body.month, written: written });
-    } finally {
-      lock.releaseLock();
-    }
+    });
   } catch (err) {
     return reply({ ok: false, error: String(err) });
   }
