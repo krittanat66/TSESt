@@ -2,28 +2,51 @@
 // nothing but a test ever sets it.
 const LINE_API = process.env.LINE_API_BASE || 'https://api.line.me';
 
-// Posts inbox rows through the Apps Script Web App, the same write path the
-// DCA scores use — the Sheets API key is read-only.
-
-export async function writeInboxRows(rows) {
+// Apps Script Web Apps answer a POST with a 302 to googleusercontent and
+// occasionally lose one on the way — a 404 or a 5xx that the identical next
+// request answers normally. One dropped call costs a recorded expense, so a
+// transport-level failure is retried; a refusal from the script itself
+// (`ok: false`, e.g. "already confirmed") is an answer and is not.
+async function postToAppsScript(payload, attempts = 3) {
   const url = process.env.APPS_SCRIPT_URL;
   const token = process.env.APPS_SCRIPT_TOKEN;
   if (!url || !token) {
     throw new Error('Missing APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN. See server/README.md.');
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    // Apps Script follows a 302 to its own googleusercontent host on the way out.
-    redirect: 'follow',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, kind: 'inbox', rows }),
-  });
+  let lastError = '';
+  for (let i = 0; i < attempts; i += 1) {
+    if (i) await new Promise((r) => setTimeout(r, 400 * i));
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, ...payload }),
+      });
+    } catch (err) {
+      lastError = err.message;
+      continue;
+    }
 
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || body.ok === false) {
-    throw new Error(body.error || `Apps Script responded ${res.status}`);
+    const body = await res.json().catch(() => ({}));
+    // The script answered and said no. Retrying cannot change that, and on a
+    // confirm it would risk booking the same row twice.
+    if (body.ok === false) throw new Error(body.error || 'Apps Script refused the write');
+    if (res.ok) return body;
+
+    lastError = `Apps Script responded ${res.status}`;
+    console.error(`apps-script: ${lastError} (attempt ${i + 1}/${attempts})`);
   }
+  throw new Error(lastError);
+}
+
+// Posts inbox rows through the Apps Script Web App, the same write path the
+// DCA scores use — the Sheets API key is read-only.
+
+export async function writeInboxRows(rows) {
+  const body = await postToAppsScript({ kind: 'inbox', rows });
   return body.ids ?? [];
 }
 
@@ -31,30 +54,12 @@ export async function writeInboxRows(rows) {
 // leaves the ledger alone. Both go through Apps Script for the same reason
 // the inbox write does — the Sheets API key cannot write.
 export async function reviewInboxRow(inboxId, action, accounts = {}) {
-  const url = process.env.APPS_SCRIPT_URL;
-  const token = process.env.APPS_SCRIPT_TOKEN;
-  if (!url || !token) {
-    throw new Error('Missing APPS_SCRIPT_URL or APPS_SCRIPT_TOKEN. See server/README.md.');
-  }
-
-  const res = await fetch(url, {
-    method: 'POST',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      token,
-      kind: action === 'confirm' ? 'inbox-confirm' : 'inbox-reject',
-      inboxId,
-      sourceAccount: accounts.source || '',
-      destAccount: accounts.destination || '',
-    }),
+  return postToAppsScript({
+    kind: action === 'confirm' ? 'inbox-confirm' : 'inbox-reject',
+    inboxId,
+    sourceAccount: accounts.source || '',
+    destAccount: accounts.destination || '',
   });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok || body.ok === false) {
-    throw new Error(body.error || `Apps Script responded ${res.status}`);
-  }
-  return body;
 }
 
 // LINE's reply token is single-use and expires in about a minute, so a failed

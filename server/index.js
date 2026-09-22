@@ -291,7 +291,18 @@ async function handleAccountTap({ step, inboxId, answers, replyToken }) {
     return replyToLine(replyToken, `ลงบัญชีแล้ว ${where}\n${result.txId ?? ''}`.trim());
   } catch (err) {
     console.error('line-webhook: tap failed', err.message);
-    return replyToLine(replyToken, `ลงบัญชีไม่สำเร็จ — ${err.message}`);
+    // The row is still pending, so offer the buttons again rather than
+    // leaving a dead end — the quick reply is spent once tapped, and without
+    // this the only way back in is the app.
+    let retry = null;
+    try {
+      const data = await getWealthData();
+      const pickable = data.accounts.filter((a) => a.status === 'Active');
+      retry = accountButtons(step, inboxId, pickable, step === 'b' ? [first] : []);
+    } catch {
+      /* offering a retry is a bonus; the message matters more */
+    }
+    return replyToLine(replyToken, `ลงบัญชีไม่สำเร็จ — ${err.message}\n\nลองเลือกใหม่อีกครั้ง`, retry);
   }
 }
 
