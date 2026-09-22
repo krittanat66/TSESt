@@ -63,7 +63,10 @@ function doPost(e) {
     if (body.kind === 'inbox-confirm') {
       if (!body.inboxId) return reply({ ok: false, error: 'inboxId is required' });
       return withLock(function () {
-        return reply({ ok: true, txId: confirmInbox(body.inboxId) });
+        return reply({
+          ok: true,
+          txId: confirmInbox(body.inboxId, body.sourceAccount, body.destAccount),
+        });
       });
     }
 
@@ -269,7 +272,7 @@ function findInboxRow(sheet, inboxId) {
  * when a person asks for it. A row already confirmed is refused rather than
  * booked twice — the app can retry a request whose reply was lost.
  */
-function confirmInbox(inboxId) {
+function confirmInbox(inboxId, sourceAccount, destAccount) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var inbox = ss.getSheetByName(INBOX_TAB);
   if (!inbox) throw new Error('no tab ' + INBOX_TAB);
@@ -308,8 +311,11 @@ function confirmInbox(inboxId) {
     when,
     Utilities.formatDate(when, ss.getSpreadsheetTimeZone(), 'HH:mm'),
     type,
-    String(v[10] || ''),  // Source Account
-    '',                   // Destination Account
+    // The reviewer picks the accounts a chat message cannot name. Without
+    // them the row books fine but no balance can move, because nothing says
+    // which account the money left or reached.
+    String(sourceAccount || v[10] || ''),
+    String(destAccount || ''),
     amount,
     currency,
     currency === 'THB' ? 1 : '',

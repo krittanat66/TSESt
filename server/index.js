@@ -231,12 +231,15 @@ app.post('/api/dca-notify', requirePasscode, async (_req, res) => {
  * passcode and never something the webhook can do on its own.
  */
 app.post('/api/inbox/review', requirePasscode, async (req, res) => {
-  const { id, action } = req.body ?? {};
+  const { id, action, sourceAccount, destinationAccount } = req.body ?? {};
   if (!id || (action !== 'confirm' && action !== 'reject')) {
     return res.status(400).json({ error: 'id and action (confirm|reject) are required' });
   }
   try {
-    const result = await reviewInboxRow(id, action);
+    const result = await reviewInboxRow(id, action, {
+      source: sourceAccount,
+      destination: destinationAccount,
+    });
     // The sheet changed, so a cached read would show the row still pending.
     cache.clear();
     return res.json({ ok: true, ...result });

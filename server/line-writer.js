@@ -26,7 +26,7 @@ export async function writeInboxRows(rows) {
 // Confirm moves a reviewed row into 04_TRANSACTIONS; reject marks it and
 // leaves the ledger alone. Both go through Apps Script for the same reason
 // the inbox write does — the Sheets API key cannot write.
-export async function reviewInboxRow(inboxId, action) {
+export async function reviewInboxRow(inboxId, action, accounts = {}) {
   const url = process.env.APPS_SCRIPT_URL;
   const token = process.env.APPS_SCRIPT_TOKEN;
   if (!url || !token) {
@@ -41,6 +41,8 @@ export async function reviewInboxRow(inboxId, action) {
       token,
       kind: action === 'confirm' ? 'inbox-confirm' : 'inbox-reject',
       inboxId,
+      sourceAccount: accounts.source || '',
+      destAccount: accounts.destination || '',
     }),
   });
 

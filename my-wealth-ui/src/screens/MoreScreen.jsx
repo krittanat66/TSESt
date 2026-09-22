@@ -11,20 +11,52 @@ const STATUS_STYLE = {
   Rejected: 'bg-coral/20 text-coral',
 };
 
-function InboxRow({ item }) {
+function AccountSelect({ label, value, onChange, accounts }) {
+  return (
+    <label className="block">
+      <span className="text-text-secondary text-xs">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full bg-bg-primary border border-border-soft rounded-lg px-3 py-2 text-white text-sm"
+      >
+        <option value="">— เลือกบัญชี —</option>
+        {accounts.map((a) => (
+          <option key={a.id} value={a.name}>
+            {a.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function InboxRow({ item, accounts }) {
   const { reviewInbox } = useWealth();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
+  const [source, setSource] = useState(item.account || '');
+  const [destination, setDestination] = useState('');
 
   const pending = item.status !== 'Confirmed' && item.status !== 'Rejected';
   // Nothing to book: a message the parser could not read has no amount, and
   // confirming it would write a zero into the ledger.
-  const bookable = pending && item.amount > 0 && Boolean(item.type);
+  const hasAmount = pending && item.amount > 0 && Boolean(item.type);
+
+  // A chat message rarely names the accounts, and a row booked without them
+  // moves no balance — the whole point of recording it. The reviewer supplies
+  // what the message could not, and a transfer needs both ends.
+  const isTransfer = item.type === 'Transfer';
+  const needsDestination = isTransfer;
+  const bookable = hasAmount && Boolean(source) && (!needsDestination || Boolean(destination));
 
   const run = async (action) => {
     setBusy(action);
     setError(null);
-    const res = await reviewInbox(item.id, action);
+    const res = await reviewInbox(item.id, action, {
+      sourceAccount: source,
+      destinationAccount: destination,
+    });
     setBusy('');
     if (!res.ok) setError(res.error);
   };
@@ -63,6 +95,25 @@ function InboxRow({ item }) {
         <p className="text-text-secondary text-xs mt-2 italic">“{item.rawMessage}”</p>
       )}
 
+      {hasAmount && (
+        <div className="mt-4 space-y-3">
+          <AccountSelect
+            label={isTransfer ? 'โอนจากบัญชี' : 'หักจากบัญชี'}
+            value={source}
+            onChange={setSource}
+            accounts={accounts}
+          />
+          {needsDestination && (
+            <AccountSelect
+              label="เข้าบัญชี"
+              value={destination}
+              onChange={setDestination}
+              accounts={accounts}
+            />
+          )}
+        </div>
+      )}
+
       {pending && (
         <div className="flex gap-2 mt-4">
           <button
@@ -84,9 +135,15 @@ function InboxRow({ item }) {
         </div>
       )}
 
-      {!bookable && pending && (
+      {pending && !hasAmount && (
         <p className="text-warning text-xs mt-2">
           ไม่มีจำนวนเงินหรือประเภท — แก้ในชีต 16_INBOX ก่อนจึงจะยืนยันได้
+        </p>
+      )}
+
+      {pending && hasAmount && !bookable && (
+        <p className="text-warning text-xs mt-2">
+          เลือกบัญชีให้ครบก่อนจึงจะยืนยันได้ — ถ้าไม่ระบุ ยอดเงินในบัญชีจะไม่ขยับ
         </p>
       )}
 
@@ -102,6 +159,8 @@ function InboxRow({ item }) {
 export function MoreScreen() {
   const { data } = useWealth();
   const inboxItems = data.inbox;
+  // Only accounts money can actually sit in or move between.
+  const cashAccounts = data.accounts.filter((a) => a.status === 'Active');
 
   const menuItems = [
     { icon: Inbox, label: 'Data Inbox', badge: inboxItems.length, color: 'text-cyan' },
@@ -129,7 +188,7 @@ export function MoreScreen() {
           </h2>
           <div className="space-y-2">
             {inboxItems.map((item) => (
-              <InboxRow key={item.id} item={item} />
+              <InboxRow key={item.id} item={item} accounts={cashAccounts} />
             ))}
             {!inboxItems.length && (
               <p className="text-text-tertiary text-sm">ยังไม่มีรายการรอตรวจ</p>

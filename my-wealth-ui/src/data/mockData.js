@@ -258,12 +258,16 @@ export const getCurrencySymbol = (currency) => {
   return currency === 'THB' ? '฿' : '$';
 };
 
+// The sheet can leave any figure blank, and a missing one reaching this used
+// to throw inside render — taking the whole screen down over one empty cell.
 export const formatCurrency = (value, currency = 'THB') => {
   const symbol = getCurrencySymbol(currency);
+  const n = Number(value);
+  if (!Number.isFinite(n)) return `${symbol}—`;
   if (currency === 'THB') {
-    return `${symbol}${value.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`;
+    return `${symbol}${n.toLocaleString('th-TH', { maximumFractionDigits: 0 })}`;
   }
-  return `${symbol}${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  return `${symbol}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 };
 
 export const formatPercent = (value) => {

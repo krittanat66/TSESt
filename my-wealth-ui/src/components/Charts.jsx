@@ -1,3 +1,4 @@
+import { formatCurrency } from '../data/mockData';
 import {
   LineChart, Line,
   BarChart, Bar,
@@ -20,7 +21,7 @@ export function NetWorthChart({ data }) {
               border: '1px solid #1C5265',
               borderRadius: '8px'
             }}
-            formatter={(value) => `฿${value.toLocaleString()}`}
+            formatter={(value) => formatCurrency(value)}
           />
           <Line
             type="monotone"
@@ -108,7 +109,7 @@ export function CashFlowChart({ income, expense, saving }) {
               border: '1px solid #1C5265',
               borderRadius: '8px'
             }}
-            formatter={(value) => `฿${value.toLocaleString()}`}
+            formatter={(value) => formatCurrency(value)}
           />
           <Bar dataKey="actual" fill="#22E6E0" radius={[8, 8, 0, 0]} />
           <Bar dataKey="plan" fill="#8B7CFF" radius={[8, 8, 0, 0]} />

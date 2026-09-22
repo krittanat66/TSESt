@@ -96,7 +96,7 @@ export function WealthProvider({ children }) {
   // be reported rather than assumed: a failure that looked like a success
   // would leave the row pending with the viewer believing it was booked.
   const reviewInbox = useCallback(
-    async (id, action) => {
+    async (id, action, accounts = {}) => {
       const code = readPasscode();
       try {
         const res = await fetch(`${API_URL}/inbox/review`, {
@@ -105,7 +105,7 @@ export function WealthProvider({ children }) {
             'Content-Type': 'application/json',
             ...(code ? { Authorization: `Bearer ${code}` } : {}),
           },
-          body: JSON.stringify({ id, action }),
+          body: JSON.stringify({ id, action, ...accounts }),
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) return { ok: false, error: body.error || `Server responded ${res.status}` };
