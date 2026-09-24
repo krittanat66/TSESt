@@ -12,7 +12,15 @@
 
 const LINE_DATA_API = process.env.LINE_DATA_API_BASE || 'https://api-data.line.me';
 const GEMINI_API = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Google retires model names on its own schedule, and a retired name answers
+// 404 — which is how the first real slip failed. So the name is not trusted:
+// the ones below are tried in order, and if every one is gone the API is
+// asked which models this key can use. Whichever works is remembered for
+// the life of the process.
+const MODEL_CANDIDATES = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash'].filter(
+  Boolean
+);
+let workingModel = null;
 
 // A phone photo of a slip is well under this. The cap is here so a malformed
 // or hostile upload cannot pull an unbounded body into memory.
@@ -58,7 +66,16 @@ const PROMPT = `คุณกำลังอ่านสลิปธนาคา�
 - Investment = ซื้อหุ้น กองทุน ทอง หรือ DCA (ให้ใส่ ticker ใน asset)
 - Expense = จ่ายให้ร้านค้าหรือบุคคลอื่น
 ถ้าไม่แน่ใจระหว่าง Transfer กับ Expense ให้ตอบ Expense และตั้ง confidence ต่ำ
-เลขบัญชีให้เอาเฉพาะตัวเลข ไม่ต้องมีขีด ถ้าอ่านไม่ได้ให้ใส่ ""
+merchant คือชื่อผู้รับเงิน/ร้านค้า (เช่น "เคเอฟซี" ไม่ใช่ Biller ID)
+
+เลขบัญชี:
+- สลิปธนาคารมักปิดบางหลัก เช่น "xxx-xxx069-0" ให้ตอบเฉพาะตัวเลขที่มองเห็นตามลำดับ คือ "0690"
+- ห้ามเดาหลักที่ถูกปิด ห้ามใส่ Biller ID รหัสร้านค้า หรือรหัสอ้างอิงลงในช่องเลขบัญชี
+- ถ้าปลายทางเป็นร้านค้าหรือ Biller ไม่ใช่บัญชี ให้ toAccountNumber เป็น ""
+
+วันที่:
+- สลิปไทยใช้ปี พ.ศ. ให้ลบ 543 เป็น ค.ศ. เช่น "23 ก.ย. 2569" คือ "2026-09-23"
+
 confidence คือ 0 ถึง 1`;
 
 // Models wrap JSON in ```json fences often enough that stripping them is
@@ -82,41 +99,106 @@ const KINDS = new Set(['Expense', 'Investment', 'Transfer']);
  * Returns the raw reading. Turning it into an inbox row — and deciding
  * whether it is trustworthy enough to pre-fill anything — is `slipToRow`.
  */
+function geminiUrl(model, action, key) {
+  return `${GEMINI_API}/v1beta/models/${model}:${action}?key=${encodeURIComponent(key)}`;
+}
+
+// Google's error body says why — "model not found", "API key not valid",
+// "quota exceeded" — and without it every failure reads as a bare status
+// code, as the first one did.
+async function geminiError(res) {
+  const body = await res.json().catch(() => ({}));
+  const why = body?.error?.message ? ` — ${body.error.message}` : '';
+  return new Error(`Gemini responded ${res.status}${why}`.slice(0, 300));
+}
+
+/**
+ * The newest flash model this key can call. Only used once every name in
+ * MODEL_CANDIDATES has come back 404.
+ */
+export async function discoverModel(key) {
+  const res = await fetch(`${GEMINI_API}/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`);
+  if (!res.ok) throw await geminiError(res);
+  const { models = [] } = await res.json();
+  return pickModel(models);
+}
+
+// Plain flash models that read images: not the image-generating, speech or
+// live variants, and a stable name before an experiment. Newest version
+// first, since an old name is the one about to be retired.
+export function pickModel(models) {
+  const version = (name) => Number((name.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  const usable = models
+    .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+    .map((m) => String(m.name ?? '').replace(/^models\//, ''))
+    .filter((n) => /flash/.test(n) && !/image|tts|audio|live|embedding|thinking/.test(n));
+  usable.sort((a, b) => {
+    const unstable = (n) => (/exp|preview/.test(n) ? 1 : 0);
+    return unstable(a) - unstable(b) || version(b) - version(a) || /lite/.test(a) - /lite/.test(b);
+  });
+  if (!usable.length) throw new Error('ไม่พบโมเดล Gemini ที่อ่านรูปได้สำหรับคีย์นี้');
+  return usable[0];
+}
+
+async function generate(model, key, request) {
+  return fetch(geminiUrl(model, 'generateContent', key), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Asks the vision model what the slip says.
+ *
+ * Returns the raw reading. Turning it into an inbox row — and deciding
+ * whether it is trustworthy enough to pre-fill anything — is `slipToRow`.
+ */
 export async function readSlip({ buffer, mimeType }) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY');
 
-  const res = await fetch(
-    `${GEMINI_API}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: PROMPT },
-              { inline_data: { mime_type: mimeType, data: buffer.toString('base64') } },
-            ],
-          },
+  const request = {
+    contents: [
+      {
+        parts: [
+          { text: PROMPT },
+          { inline_data: { mime_type: mimeType, data: buffer.toString('base64') } },
         ],
-        // Reading a number off a picture has one right answer, so there is
-        // nothing for sampling to explore.
-        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
-      }),
-    }
-  );
+      },
+    ],
+    // Reading a number off a picture has one right answer, so there is
+    // nothing for sampling to explore.
+    generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+  };
 
-  if (!res.ok) {
-    throw new Error(`Gemini responded ${res.status}`);
+  let res = null;
+  const tried = workingModel ? [workingModel] : MODEL_CANDIDATES;
+  for (const model of tried) {
+    res = await generate(model, key, request);
+    if (res.status !== 404) {
+      if (res.ok) workingModel = model;
+      break;
+    }
+    console.error(`gemini: model ${model} not found, trying the next`);
   }
+  if (res.status === 404) {
+    // Every known name is retired (or the remembered one just was): ask.
+    workingModel = null;
+    const model = await discoverModel(key);
+    console.log(`gemini: using discovered model ${model}`);
+    res = await generate(model, key, request);
+    if (res.ok) workingModel = model;
+  }
+  if (!res.ok) throw await geminiError(res);
+
   const body = await res.json();
   const textPart = body?.candidates?.[0]?.content?.parts?.find((p) => typeof p.text === 'string');
   if (!textPart) throw new Error('อ่านสลิปไม่ออก');
 
   const out = parseJsonReply(textPart.text);
   if (!KINDS.has(out.kind)) out.kind = 'Expense';
-  out.amount = Number(out.amount);
+  out.amount = Number(String(out.amount).replace(/,/g, ''));
   if (!Number.isFinite(out.amount) || out.amount <= 0) throw new Error('อ่านยอดเงินไม่ออก');
   return out;
 }
@@ -131,9 +213,17 @@ const TYPE_BY_KIND = { Expense: 'Expense', Investment: 'Buy', Transfer: 'Transfe
  * same.
  */
 export function slipToRow(slip, { receivedAt = '' } = {}) {
+  // Thai slips mask most of an account number ("xxx-xxx069-0"), so what
+  // survives is often the last four digits. Those are kept — the caller
+  // matches them against the end of each account number — while anything
+  // shorter could match too many accounts to mean one.
+  //
+  // Positions are kept, blanks included: [from, to]. Dropping an unreadable
+  // "from" would promote the "to" into its place and book the money out of
+  // the account it went into.
   const numbers = [slip.fromAccountNumber, slip.toAccountNumber]
     .map((n) => String(n ?? '').replace(/\D/g, ''))
-    .filter((n) => n.length >= 6);
+    .map((n) => (n.length >= 4 ? n : ''));
 
   const confidence = Number(slip.confidence);
   return {

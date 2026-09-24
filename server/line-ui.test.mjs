@@ -10,7 +10,8 @@ import { moodOf, personaReply, PERSONA_RESPONSES } from './line-persona.js';
 import { buildInboxRows, buildImageEvents } from './line-webhook.js';
 import { slipCard, budgetCard, portfolioCard, toneFor } from './line-flex.js';
 import { richMenu, TILES, tileBounds, menuSvg, MENU_WIDTH, MENU_HEIGHT } from './line-richmenu.js';
-import { slipToRow } from './line-vision.js';
+import { slipToRow, pickModel } from './line-vision.js';
+import { accountByNumber } from './line-buttons.js';
 
 const fail = [];
 const check = (cond, msg) => { if (!cond) fail.push(msg); };
@@ -136,6 +137,33 @@ check(move.confidence === 'Low', 'a poor read is Low');
 check(slipToRow({ kind: 'Nonsense', amount: 1 }).transactionType === 'Expense', 'an unknown kind is spending');
 // A date the model could not read must not reach the sheet as a date.
 check(slipToRow({ kind: 'Expense', amount: 1, date: 'เมื่อวาน' }).transactionDate === '', 'an unreadable date is dropped');
+
+// --- which Gemini model ---------------------------------------------------
+const listed = (...names) => names.map((n) => ({ name: `models/${n}`, supportedGenerationMethods: ['generateContent'] }));
+check(pickModel(listed('gemini-2.0-flash', 'gemini-3.0-flash', 'gemini-3.0-flash-lite')) === 'gemini-3.0-flash',
+  'newest full flash wins over older and lite');
+check(pickModel(listed('gemini-4.0-flash-preview', 'gemini-3.0-flash')) === 'gemini-3.0-flash',
+  'a stable name beats a preview');
+check(pickModel(listed('gemini-3.0-flash-image', 'gemini-3.0-flash-tts', 'gemini-2.5-flash')) === 'gemini-2.5-flash',
+  'image-making and speech models cannot read a slip');
+let threw = false;
+try { pickModel(listed('gemini-3.0-pro')); } catch { threw = true; }
+check(threw, 'no flash model is an error, not a guess');
+
+// --- masked account numbers -----------------------------------------------
+const accs = [
+  { name: 'Daily', accountNumber: '408-020069-0' },
+  { name: 'Salary', accountNumber: '0202890162' },
+  { name: 'Dime', accountNumber: '2050270162' },
+];
+check(accountByNumber(accs, '4080200690') === 'Daily', 'dashes in the sheet do not stop an exact match');
+check(accountByNumber(accs, '0690') === 'Daily', 'a masked tail finds the one account ending that way');
+// Two accounts end in 0162: naming either would be a coin toss.
+check(accountByNumber(accs, '0162') === '', 'an ambiguous tail names nobody');
+check(accountByNumber(accs, '690') === '', 'three digits is too few to mean one account');
+// Positions survive a blank "from", so "to" is never promoted into it.
+check(slipToRow({ kind: 'Transfer', amount: 1, fromAccountNumber: 'xxx', toAccountNumber: '0690' }).accountNumbers[0] === '',
+  'an unreadable from-account stays in its place');
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

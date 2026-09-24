@@ -95,3 +95,22 @@ export function slipAccountButtons(step, inboxId, meta, accounts, answers = []) 
     })),
   };
 }
+
+/**
+ * The account a number names, or ''.
+ *
+ * A typed message carries the whole number. A slip usually shows only the
+ * tail — SCB prints "xxx-xxx069-0" — so a short number matches the end of
+ * an account number instead, and only when exactly one account ends that
+ * way: two matches is a guess, and a guessed account is worse than a button.
+ */
+export function accountByNumber(accounts, raw) {
+  const n = String(raw ?? '').replace(/\D/g, '');
+  if (n.length < 4) return '';
+  const numbered = accounts.filter((a) => a.accountNumber);
+  const clean = (a) => String(a.accountNumber).replace(/\D/g, '');
+  const exact = numbered.find((a) => clean(a) === n);
+  if (exact) return exact.name;
+  const tail = numbered.filter((a) => clean(a).endsWith(n));
+  return tail.length === 1 ? tail[0].name : '';
+}

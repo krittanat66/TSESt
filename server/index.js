@@ -23,6 +23,7 @@ import {
   encodeSlip,
   decodeSlip,
   slipAccountButtons,
+  accountByNumber,
 } from './line-buttons.js';
 import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
 import { commandReply, dcaDigest } from './line-commands.js';
@@ -198,21 +199,21 @@ app.post('/api/line-webhook', async (req, res) => {
  * the slip, then the account 03_ACCOUNTS marks ใช้จ่ายรายวัน for spending.
  */
 function attachAccounts(entries, data) {
-  const byNumber = new Map(
-    data.accounts.filter((a) => a.accountNumber).map((a) => [a.accountNumber, a.name])
-  );
   const daily = data.dashboard.cash?.dailyAccount;
 
   for (const r of entries) {
-    const named = (r.accountNumbers ?? []).map((n) => byNumber.get(n)).filter(Boolean);
-    if (named[0]) r.account = named[0];
+    const [from, to] = r.accountNumbers ?? [];
+    const source = accountByNumber(data.accounts, from);
+    const destination = accountByNumber(data.accounts, to);
+    if (source) r.account = source;
     else if (r.transactionType === 'Expense' && daily) r.account = daily;
-    // A second number is the other end of a transfer; the reviewer still
-    // confirms it, but it arrives filled in.
-    if (named[1]) r.destinationAccount = named[1];
+    // The other end of a transfer; the reviewer still confirms it, but it
+    // arrives filled in.
+    if (destination && destination !== r.account) r.destinationAccount = destination;
   }
   return data.accounts.filter((a) => a.status === 'Active');
 }
+
 
 /**
  * The card a saved row is answered with, plus the buttons that book it.

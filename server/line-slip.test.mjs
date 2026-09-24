@@ -18,6 +18,8 @@ const confirmed = new Set();
 const rejected = new Set();
 const sent = [];
 const appsCalls = [];
+const modelsTried = [];
+let modelListCalls = 0;
 
 const stub = createServer((req, res) => {
   let b = '';
@@ -28,7 +30,24 @@ const stub = createServer((req, res) => {
       res.setHeader('content-type', 'image/jpeg');
       return res.end(Buffer.from('jpg'));
     }
+    // Reproduces the first real failure: the names the bot knows are
+    // retired and answer 404, and only the model list knows what exists.
+    if (req.url.startsWith('/v1beta/models?')) {
+      modelListCalls += 1;
+      return res.end(JSON.stringify({ models: [
+        { name: 'models/gemini-9.0-flash-image', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.0-flash', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-3.5-flash-preview', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/text-embedding-9', supportedGenerationMethods: ['embedContent'] },
+      ] }));
+    }
     if (req.url.includes('generateContent')) {
+      const model = req.url.match(/models\/([^:]+):/)[1];
+      modelsTried.push(model);
+      if (model !== 'gemini-3.0-flash') {
+        res.statusCode = 404;
+        return res.end(JSON.stringify({ error: { code: 404, message: `models/${model} is not found for API version v1beta` } }));
+      }
       return res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(reading) }] } }] }));
     }
     if (req.url === '/apps') {
@@ -94,10 +113,33 @@ const walk = (node, fn) => { fn(node); for (const v of Object.values(node ?? {})
 const buttons = (card) => { const out = []; walk(card, (n) => { if (n.type === 'button') out.push(n.action); }); return out; };
 const texts = (card) => { const out = []; walk(card, (n) => { if (n.type === 'text') out.push(n.text); }); return out.join(' | '); };
 
+// --- 0. The slip from the first real test, as SCB prints it --------------
+// "จาก xxx-xxx069-0" to a KFC biller, 168.00, dated in the Buddhist era.
+reading = { kind: 'Expense', amount: '168.00', currency: 'THB', date: '2026-09-23',
+  merchant: 'เคเอฟซี1737-พีที ตลิ่งชัน', fromAccountNumber: '0690', toAccountNumber: '', confidence: 0.92 };
+let [card] = await photo();
+check(card?.type === 'flex', `the real slip is read, got: ${card?.text ?? card?.type}`);
+check(modelsTried.slice(0, 2).join() === 'gemini-flash-latest,gemini-2.5-flash', `known names tried first: ${modelsTried}`);
+check(modelsTried.at(-1) === 'gemini-3.0-flash', `the discovered model is used: ${modelsTried.at(-1)}`);
+const real = texts(card?.contents);
+check(real.includes('฿168'), `amount: ${real}`);
+// The masked tail is enough: only the daily account ends in 0690.
+check(real.includes('SCB Daily Living Account'), 'xxx-xxx069-0 resolves to the daily account');
+check(real.includes('เคเอฟซี') && real.includes('จ่ายให้'), 'the biller is the payee');
+check(buttons(card?.contents).length === 3, 'straight to the confirm button');
+console.log('  real slip →', real);
+
+// The working name is remembered: the next slip goes straight to it.
+modelsTried.length = 0;
+await photo();
+check(modelsTried.join() === 'gemini-3.0-flash', `remembered: ${modelsTried}`);
+check(modelListCalls === 1, `the model list is asked once: ${modelListCalls}`);
+appsCalls.length = 0;
+
 // --- 1. Transfer slip, both account numbers on it ------------------------
 reading = { kind: 'Transfer', amount: 2500, currency: 'THB', date: '2026-09-21',
   fromAccountNumber: '461-687-0114', toAccountNumber: '4080200690', confidence: 0.95 };
-let [card] = await photo();
+[card] = await photo();
 check(card?.type === 'flex', `slip answered with a card, got ${card?.type}`);
 const shown = texts(card?.contents);
 check(shown.includes('฿2,500'), `amount on the card: ${shown}`);
