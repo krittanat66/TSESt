@@ -428,6 +428,32 @@ app.post('/api/dca-notify', requirePasscode, async (_req, res) => {
 });
 
 /**
+ * Balances of the accounts a booking touched, as they stand after it.
+ *
+ * The script reads them itself after flushing the sheet, which is the only
+ * way to be sure the new row is counted. A script deployed before that
+ * existed returns none, so the sheet is read here instead — the cache is
+ * dropped first, or the answer would be the balance from before the tap.
+ * No balance at all is acceptable; a wrong one is not, so a failure yields [].
+ */
+async function balancesAfter(result, names) {
+  if (Array.isArray(result?.balances) && result.balances.length) return result.balances;
+  const wanted = names.filter(Boolean);
+  if (!wanted.length) return [];
+  try {
+    cache.clear();
+    const data = await getWealthData();
+    return wanted
+      .map((n) => data.accounts.find((a) => a.name === n))
+      .filter(Boolean)
+      .map((a) => ({ name: a.name, balance: a.balance, currency: a.currency }));
+  } catch (err) {
+    console.error('line-webhook: balance read failed', err.message);
+    return [];
+  }
+}
+
+/**
  * One tap on an account button.
  *
  * Spending needs one account and the row can be booked on the first tap. A
@@ -454,8 +480,25 @@ async function handleAccountTap({ step, inboxId, answers, replyToken }) {
 
     const result = await reviewInboxRow(inboxId, 'confirm', { source, destination });
     cache.clear();
+    const balances = await balancesAfter(result, [source, destination]);
+
+    // The script says what it booked; with that the answer is the same card
+    // a slip ends on. A script too old to say falls back to text.
+    if (result.amount) {
+      const entry = {
+        inboxId,
+        transactionType: result.type,
+        amount: result.amount,
+        currency: result.currency,
+        category: result.category,
+        account: source,
+        destinationAccount: destination,
+      };
+      return replyToLine(replyToken, confirmCard(entry, { done: true, txId: result.txId ?? '', balances }));
+    }
     const where = destination ? `${source} → ${destination}` : source;
-    return replyToLine(replyToken, `ลงบัญชีแล้ว ${where}\n${result.txId ?? ''}`.trim());
+    const left = balances.map((b) => `${b.name} เหลือ ฿${Number(b.balance).toLocaleString('th-TH')}`);
+    return replyToLine(replyToken, [`ลงบัญชีแล้ว ${where}`, result.txId ?? '', ...left].filter(Boolean).join('\n'));
   } catch (err) {
     console.error('line-webhook: tap failed', err.message);
     // The row is still pending, so offer the buttons again rather than
@@ -560,7 +603,8 @@ async function handleSlipTap({ step, inboxId, answers, replyToken }) {
         destination: entry.destinationAccount,
       });
       cache.clear();
-      return replyToLine(replyToken, confirmCard(entry, { done: true, txId: result.txId ?? '' }));
+      const balances = await balancesAfter(result, [entry.account, entry.destinationAccount]);
+      return replyToLine(replyToken, confirmCard(entry, { done: true, txId: result.txId ?? '', balances }));
     }
 
     return replyToLine(replyToken, 'ไม่รู้จักปุ่มนี้ ลองส่งสลิปใหม่อีกครั้ง');

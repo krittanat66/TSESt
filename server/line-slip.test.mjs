@@ -26,6 +26,10 @@ let busyLeft = 0;
 const menuCalls = [];
 let existingMenus = [];
 let menuInvalid = false;
+let oldScript = false;
+// What the stub script says it booked — set per case.
+let lastType = 'Transfer';
+let lastAmount = 2500;
 
 const stub = createServer((req, res) => {
   let b = '';
@@ -82,7 +86,11 @@ const stub = createServer((req, res) => {
         if (confirmed.has(p.inboxId)) return res.end(JSON.stringify({ ok: false, error: `Error: ${p.inboxId} is already confirmed` }));
         if (rejected.has(p.inboxId)) return res.end(JSON.stringify({ ok: false, error: `Error: ${p.inboxId} was cancelled` }));
         confirmed.add(p.inboxId);
-        return res.end(JSON.stringify({ ok: true, txId: 'TX-00300' }));
+        // A script deployed before balances existed answers with the TX id
+        // alone; the bot has to cope with both.
+        if (oldScript) return res.end(JSON.stringify({ ok: true, txId: 'TX-00300' }));
+        return res.end(JSON.stringify({ ok: true, txId: 'TX-00300', type: lastType, amount: lastAmount, currency: 'THB', category: lastType === 'Expense' ? 'Food' : 'Transfer',
+          balances: [p.sourceAccount, p.destAccount].filter(Boolean).map((name, i) => ({ name, balance: i ? 9500 : 300, currency: 'THB' })) }));
       }
       if (p.kind === 'inbox-reject') {
         if (confirmed.has(p.inboxId)) return res.end(JSON.stringify({ ok: false, error: `Error: ${p.inboxId} is already confirmed` }));
@@ -100,7 +108,7 @@ const base = `http://127.0.0.1:${stub.address().port}`;
 const fixture = join(mkdtempSync(join(tmpdir(), 'mw-')), 'wealth.json');
 writeFileSync(fixture, JSON.stringify({
   accounts: [
-    { name: 'SCB Daily Living Account', accountNumber: '4080200690', status: 'Active' },
+    { name: 'SCB Daily Living Account', accountNumber: '4080200690', status: 'Active', balance: 312, currency: 'THB' },
     { name: 'SCB Salary Account', accountNumber: '0202890162', status: 'Active' },
     { name: 'SCB Emergency Reserve Account', accountNumber: '4616870114', status: 'Active' },
   ],
@@ -283,6 +291,44 @@ inst = await install();
 check(inst.status === 502 && inst.body.error.includes('areas[0].action.type'), `LINE's reason is passed on: ${inst.body.error}`);
 check(!menuCalls.some((c) => c.startsWith('DELETE')), 'a refused menu deletes nothing');
 menuInvalid = false;
+
+// --- 6. Balances after booking -------------------------------------------
+// The card after ✅ says where the accounts now stand.
+const balanceTexts = (card) => texts(card?.contents);
+confirmed.clear(); rejected.clear();
+reading = { kind: 'Transfer', amount: 2500, currency: 'THB',
+  fromAccountNumber: '4616870114', toAccountNumber: '4080200690', confidence: 0.95 };
+lastType = 'Transfer'; lastAmount = 2500;
+[card] = await photo();
+[done] = await tap(buttons(card.contents)[0].data);
+let bt = balanceTexts(done);
+check(bt.includes('ยอดคงเหลือ'), `the booked card has a balance section: ${bt}`);
+check(bt.includes('SCB Emergency Reserve') && bt.includes('฿300'), 'the from-account balance');
+check(bt.includes('SCB Daily Living') && bt.includes('฿9,500'), 'the to-account balance');
+console.log('  ✅ with balances →', bt);
+
+// A typed message, as in the screenshot: "จ่าย12บาท ค่าอาหาร", one tap on the
+// daily account. That reply used to be a line of text with no balance.
+confirmed.clear();
+lastType = 'Expense'; lastAmount = 12;
+const [typed] = await deliver({ type: 'message', message: { type: 'text', text: 'จ่าย12บาท ค่าอาหาร' }, replyToken: 'r' });
+const pickDaily = typed?.quickReply?.items?.find((i) => i.action.label.startsWith('SCB Daily'));
+check(Boolean(pickDaily), 'the typed row offers the daily account');
+[done] = await tap(pickDaily.action.data);
+bt = balanceTexts(done);
+check(done?.type === 'flex', `a typed booking ends on a card too: ${done?.text}`);
+check(bt.includes('฿12') && bt.includes('ยอดคงเหลือ') && bt.includes('฿300'), `amount and balance: ${bt}`);
+check(bt.includes('Food'), `the category is the other end of spending: ${bt}`);
+console.log('  typed ✅ →', bt);
+
+// Code.gs not redeployed yet: no balances in the answer, so the sheet is read.
+confirmed.clear();
+oldScript = true;
+const [typed2] = await deliver({ type: 'message', message: { type: 'text', text: 'ข้าว 50' }, replyToken: 'r' });
+const pick2 = typed2.quickReply.items.find((i) => i.action.label.startsWith('SCB Daily'));
+const [old] = await tap(pick2.action.data);
+check(old?.text?.includes('เหลือ ฿312'), `falls back to the sheet's balance: ${old?.text}`);
+oldScript = false;
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

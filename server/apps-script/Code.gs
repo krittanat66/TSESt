@@ -64,9 +64,17 @@ function doPost(e) {
     if (body.kind === 'inbox-confirm') {
       if (!body.inboxId) return reply({ ok: false, error: 'inboxId is required' });
       return withLock(function () {
+        var booked = confirmInbox(body.inboxId, body.sourceAccount, body.destAccount);
+        // What was booked and where each account now stands, so the bot can
+        // answer the tap with the balance rather than just a TX number.
         return reply({
           ok: true,
-          txId: confirmInbox(body.inboxId, body.sourceAccount, body.destAccount),
+          txId: booked.txId,
+          type: booked.type,
+          amount: booked.amount,
+          currency: booked.currency,
+          category: booked.category,
+          balances: accountBalances([booked.source, booked.destination]),
         });
       });
     }
@@ -357,7 +365,60 @@ function confirmInbox(inboxId, sourceAccount, destAccount) {
   // Linked TX ID. Off by one here overwrites Confidence instead.
   inbox.getRange(row, 18).setValue('Confirmed');
   inbox.getRange(row, 19, 1, 3).setValues([['app', new Date(), txId]]);
-  return txId;
+  return {
+    txId: txId,
+    type: type,
+    amount: amount,
+    currency: currency,
+    category: String(v[11] || ''),
+    source: String(sourceAccount || v[10] || ''),
+    destination: String(destAccount || ''),
+  };
+}
+
+const ACCOUNTS_TAB = '03_ACCOUNTS';
+
+/**
+ * Current balance of each named account, read after the booking.
+ *
+ * flush() first: the balances are formulas over 04_TRANSACTIONS, and without
+ * it the read can return the figure from before the row just written. Columns
+ * are found by header name, so a column added to 03_ACCOUNTS cannot shift
+ * this onto the wrong one.
+ */
+function accountBalances(names) {
+  var wanted = names.filter(function (n) { return n; });
+  if (!wanted.length) return [];
+  SpreadsheetApp.flush();
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ACCOUNTS_TAB);
+  if (!sheet) return [];
+  var last = sheet.getLastRow();
+  var width = sheet.getLastColumn() - 1;
+  if (last < FIRST_DATA_ROW || width < 1) return [];
+
+  var head = sheet.getRange(FIRST_DATA_ROW - 1, 2, 1, width).getValues()[0]
+    .map(function (h) { return String(h).trim(); });
+  var iName = head.indexOf('Account Name');
+  var iBal = head.indexOf('Current Balance');
+  var iCur = head.indexOf('Currency');
+  if (iName === -1 || iBal === -1) return [];
+
+  var rows = sheet.getRange(FIRST_DATA_ROW, 2, last - FIRST_DATA_ROW + 1, width).getValues();
+  var out = [];
+  wanted.forEach(function (name) {
+    for (var i = 0; i < rows.length; i += 1) {
+      if (String(rows[i][iName]).trim() !== String(name).trim()) continue;
+      var bal = Number(rows[i][iBal]);
+      out.push({
+        name: name,
+        balance: isFinite(bal) ? bal : null,
+        currency: iCur === -1 ? 'THB' : String(rows[i][iCur] || 'THB').trim(),
+      });
+      return;
+    }
+  });
+  return out;
 }
 
 /** Marks an inbox row Rejected. Nothing reaches the ledger. */

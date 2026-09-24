@@ -276,7 +276,37 @@ function postbackButton(label, data, style, colour) {
  * `actions` are postback data strings, built by the caller: this module
  * draws cards and knows nothing about how a tap is routed.
  */
-export function confirmCard(entry, { actions = null, done = false, txId = '' } = {}) {
+// "SCB Daily Living Account" → "SCB Daily Living": the word carries nothing
+// and the balance beside it needs the room.
+const shortName = (name) => String(name).replace(/\s*Account$/i, '');
+
+function money(value, currency) {
+  const unit = currency === 'USD' ? '$' : '฿';
+  const n = Number(value);
+  const sign = n < 0 ? '-' : '';
+  return `${sign}${unit}${Math.abs(n).toLocaleString('th-TH', { maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * Where each account stands after the booking. A negative balance is red:
+ * it is the one number on the card that asks for something to be done.
+ */
+function balanceBlock(balances) {
+  const known = balances.filter((b) => b && b.name && Number.isFinite(Number(b.balance)) && b.balance !== null);
+  if (!known.length) return [];
+  return [
+    { type: 'separator', margin: 'xl' },
+    text('ยอดคงเหลือ', { size: 'xs', color: '#8C8C8C', margin: 'lg' }),
+    ...known.map((b) =>
+      row(shortName(b.name), money(b.balance, b.currency), {
+        weight: 'bold',
+        color: Number(b.balance) < 0 ? '#DC2626' : '#222222',
+      })
+    ),
+  ];
+}
+
+export function confirmCard(entry, { actions = null, done = false, txId = '', balances = [] } = {}) {
   const tone = toneFor(entry.transactionType);
   const t = TONES[tone];
   const unit = entry.currency === 'USD' ? '$' : '฿';
@@ -289,7 +319,7 @@ export function confirmCard(entry, { actions = null, done = false, txId = '' } =
     entry.destinationAccount ||
     (tone === 'investment' ? entry.asset : '') ||
     entry.merchant ||
-    (tone === 'expense' ? 'ค่าใช้จ่าย' : '—');
+    (tone === 'expense' ? entry.category || 'ค่าใช้จ่าย' : '—');
   const destinationIsAccount = Boolean(entry.destinationAccount);
 
   const details = [entry.merchant && entry.destinationAccount ? entry.merchant : '', entry.date]
@@ -317,6 +347,7 @@ export function confirmCard(entry, { actions = null, done = false, txId = '' } =
         ),
       ],
     },
+    ...(done ? balanceBlock(balances) : []),
     text(done ? `${entry.inboxId} → ${txId}` : entry.inboxId || '', {
       size: 'xxs',
       color: '#AAAAAA',
