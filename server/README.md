@@ -232,7 +232,8 @@ than becoming a position that was never bought. The market comes from the
 currency (USD → US Stocks, otherwise SET) and the reviewer can change it. Categories map onto `05_CATEGORIES` and fall
 back to `Other`; a message that matched no category word is still recorded,
 marked `Low` confidence so review sees it first. A message with no number at
-all is kept as raw text with the same status.
+all is not money, so it is answered as small talk and recorded nowhere — see
+**Small talk** below.
 
 ### Picking the account
 
@@ -260,6 +261,8 @@ A message that carries no number is a question, not spending:
 | `สรุป` | ยอดในบัญชี งบเดือนนี้ และความมั่งคั่งสุทธิ |
 | `หุ้น` (หรือ `dca`, `พอร์ต`) | แผน DCA ผลตอบแทนตั้งแต่ซื้อ เหตุผล และข่าว |
 | `ข่าว` | เฉพาะข่าวและเหตุผลรายตัว |
+| `เช็คงบ` | การ์ดงบประมาณ พร้อมแถบว่าหมวดไหนใช้ไปเท่าไหร่ |
+| `เช็คพอร์ต` | การ์ดพอร์ต มูลค่า DCA และผลตอบแทนรายตัว |
 | `ช่วย` | รายการคำสั่ง |
 
 The DCA answer reads 08_DCA_PLAN and 20_DCA_SCORE, including Buy Price,
@@ -270,6 +273,93 @@ of the news section rather than given an empty heading.
 
 Research reaches the sheet as a `dca-YYYY-MM.json` file dropped in the Drive
 folder; `syncDcaFromDrive` loads it. Nothing here calls a news API.
+
+### Rich menu
+
+Four tiles, 2×2, permanently under the keyboard — the things worth doing
+without typing:
+
+| | |
+| --- | --- |
+| 📸 สแกนสลิปด่วน (แดง) — opens the camera roll | 💬 โหมดพูดคุย (น้ำเงิน) |
+| 📊 เช็คงบค่าใช้จ่าย (น้ำเงิน) | 📈 เช็คพอร์ตเดือนนี้ (แดง) |
+
+LINE draws nothing here: the image *is* the menu, and the tap targets are
+invisible rectangles laid over it. Both come from the one `TILES` list in
+`line-richmenu.js`, so they cannot drift apart and send a tap to the wrong
+card. Install it with:
+
+```bash
+npm run richmenu     # builds the artwork, uploads it, sets it as default
+node scripts/richmenu.mjs build   # artwork only, into assets/richmenu.png
+```
+
+The script downloads Noto Sans Thai on first run and points fontconfig at it,
+because most machines rendering this have no Thai face installed and the
+labels would come out as empty boxes. The icons are drawn as vectors rather
+than set as emoji for the same reason. Nothing it generates is committed —
+edit the tiles in `line-richmenu.js` and run it again.
+
+### Cards
+
+An answer that is a set of figures comes back as a Flex card, coloured by
+what happened to the money rather than by how much of it there was:
+
+| | |
+| --- | --- |
+| รายจ่าย | แดงเข้ม `#991B1B` / `#DC2626` |
+| การลงทุน · รายรับ | เขียว `#065F46` / `#059669` |
+| โยกย้ายเงิน · งบประมาณ | น้ำเงินกรมท่า `#1E3A8A` / `#2563EB` |
+
+A confirmation card says **รอยืนยัน** and means it: the row is in 16_INBOX
+and nothing has reached the ledger until an account button is tapped. A card
+that said "บันทึกแล้ว" would be read as done, and the receipt thrown away.
+
+### Slips
+
+Send a photo of a slip and the bot reads it, decides which of three things it
+is, and files it the same way a typed message is filed:
+
+| | ลงที่ไหน | สี |
+| --- | --- | --- |
+| Expense | 04_TRANSACTIONS แล้วตัดงบ 10_BUDGET | แดง |
+| Investment | รายการซื้อ แล้วอัปเดต 20_DCA_SCORE | เขียว |
+| Transfer | โอนระหว่างบัญชีตัวเอง ไม่แตะงบกินเที่ยว | น้ำเงิน |
+
+Which of the three matters more than the amount: a transfer booked as
+spending inflates the month's expenses by the whole sum. The model is asked
+to say which and to answer `Expense` with low confidence when it cannot tell
+a transfer from a payment, and its confidence reaches the sheet as
+High/Medium/Low so a blurry slip and a clean one do not arrive at the
+reviewer looking the same. The full reading is kept in the `AI Result`
+column, so a wrong figure can be traced to what the model thought it saw.
+
+A slip **does not** skip review. It is easier to misread a photo than a
+sentence, not harder, so it waits for the same account tap. The slip's own
+date is carried into the row rather than the date the photo was sent — a slip
+photographed three days later belongs in the month it was paid.
+
+Set `GEMINI_API_KEY` to turn this on ([aistudio.google.com/apikey][k]). It is
+a different key from `GOOGLE_API_KEY`, which only reads the sheet. Without
+it, the bot says it cannot read slips yet and still takes typed messages.
+
+[k]: https://aistudio.google.com/apikey
+
+### Small talk
+
+A message with no amount and no command is answered with a line from
+`line-persona.js` and recorded nowhere.
+
+The order is the point. Commands are matched first, then the transaction
+parser, and the persona only sees what neither claimed. Put it first and
+`ข้าว 120` gets a punchline instead of being recorded — the bot stops being
+useful the moment it becomes funny. The keyword list is deliberately narrower
+than it looks: a bare `ขอ` would swallow `ขอสรุป`, and `เงิน` would swallow
+`เงินเดือน 18945`.
+
+"โหมดพูดคุย" enters no mode. There is nothing to enter, because small talk is
+already answered whenever a message carries no money in it — and a mode that
+could be left on would be a way to lose an expense.
 
 ### New month rows
 
@@ -297,7 +387,10 @@ Render's free plan sleeps the service and a sleeping process runs no cron:
    access token** into `LINE_CHANNEL_ACCESS_TOKEN`.
 3. Set the webhook URL to `https://<your-host>/api/line-webhook` and enable
    "Use webhook". Turn **off** auto-reply messages.
-4. Redeploy the Apps Script Web App so it picks up `appendInbox`.
+4. Redeploy the Apps Script Web App (**Deploy ▸ New version**) so it picks up
+   `appendInbox` and `transactionDate`.
+5. `npm run richmenu` to install the menu.
+6. Optional: set `GEMINI_API_KEY` to turn on slip reading.
 
 Without `LINE_CHANNEL_SECRET` the route returns 503 and accepts nothing: the
 signature is the only thing standing between the endpoint and anyone who

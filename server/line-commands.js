@@ -4,9 +4,17 @@
 // checked against these before it is treated as an expense — otherwise "สรุป"
 // would be filed as an uncategorised transaction.
 
+import { personaReply } from './line-persona.js';
+
 const baht = (n) => `฿${Math.round(Number(n) || 0).toLocaleString('th-TH')}`;
 
 const COMMANDS = [
+  // The rich menu's own words come first and are matched exactly, so a tile
+  // always reaches the card it was drawn for even if a looser keyword below
+  // would also have claimed the message.
+  ['budget', ['เช็คงบ', 'เช็คงบค่าใช้จ่าย', 'งบ']],
+  ['portfolio', ['เช็คพอร์ต', 'เช็คพอร์ตเดือนนี้']],
+  ['chat', ['เข้าสู่โหมดพูดคุย']],
   ['news', ['ข่าว', 'news']],
   ['dca', ['dca', 'หุ้น', 'ลงทุน', 'พอร์ต']],
   ['summary', ['สรุป', 'เงิน', 'ยอด', 'คงเหลือ', 'summary']],
@@ -123,13 +131,26 @@ const HELP = [
   'หุ้น — แผน DCA ผลตอบแทน และข่าว',
   'ข่าว — เฉพาะข่าวและเหตุผลรายตัว',
   'ช่วย — ข้อความนี้',
+  '',
+  'หรือกดปุ่มในเมนูด้านล่าง',
+  'ส่งรูปสลิปมาก็อ่านให้ได้เหมือนกัน 📸',
 ].join('\n');
+
+// Which commands answer with a card rather than a paragraph. A card is
+// better where the answer is a set of figures to scan; text is better where
+// it is prose, like the news.
+export const CARD_COMMANDS = new Set(['budget', 'portfolio']);
 
 export function commandReply(name, data) {
   if (name === 'help') return HELP;
   if (name === 'news') return newsReply(data);
   if (name === 'dca') return dcaReply(data);
-  if (name === 'summary') return summaryReply(data);
+  if (name === 'summary' || name === 'budget') return summaryReply(data);
+  if (name === 'portfolio') return dcaReply(data);
+  // The chat-mode tile only needs to say hello; there is no mode to enter,
+  // because the bot already answers small talk whenever a message carries no
+  // money in it.
+  if (name === 'chat') return personaReply('สวัสดี');
   return HELP;
 }
 

@@ -8,10 +8,19 @@ import cors from 'cors';
 import { fetchSheetValues } from './sheets.js';
 import { mapSheetsToAppData } from './mapper.js';
 import { writeDcaScores } from './dca-writer.js';
-import { verifySignature, buildInboxRows, buildPostbacks, replyText } from './line-webhook.js';
+import {
+  verifySignature,
+  buildInboxRows,
+  buildImageEvents,
+  buildPostbacks,
+  replyText,
+} from './line-webhook.js';
 import { accountButtons, needsTwoAccounts, orderAccounts } from './line-buttons.js';
 import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
 import { commandReply, dcaDigest } from './line-commands.js';
+import { personaReply } from './line-persona.js';
+import { slipCard, budgetCard, portfolioCard } from './line-flex.js';
+import { visionConfigured, fetchLineImage, readSlip, slipToRow } from './line-vision.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -127,8 +136,13 @@ app.post('/api/dca-scores', requirePasscode, async (req, res) => {
  * LINE Messaging API webhook. Guarded by LINE's own signature rather than the
  * app passcode, because LINE is the caller and has no way to send one.
  *
- * Messages land in 16_INBOX with Status "Need Review" and go no further — a
- * misread chat message must never book itself into 04_TRANSACTIONS.
+ * Four kinds of delivery arrive here and are kept apart on purpose:
+ *   money   — a message with an amount, or a photographed slip. Lands in
+ *             16_INBOX as "Need Review" and goes no further; a misread
+ *             message must never book itself into 04_TRANSACTIONS.
+ *   command — a rich-menu tap or a typed question. Answered from the sheet.
+ *   a tap   — an account button, which is what finally books a pending row.
+ *   chat    — everything else. Answered with a joke and recorded nowhere.
  */
 app.post('/api/line-webhook', async (req, res) => {
   const secret = process.env.LINE_CHANNEL_SECRET;
@@ -143,92 +157,129 @@ app.post('/api/line-webhook', async (req, res) => {
   // rows. The delivery is acknowledged first and the write runs after.
   res.json({ ok: true });
 
+  const events = req.body?.events;
+  const work = [];
+
   // A tap on an account button finishes a row that is already saved.
-  const taps = buildPostbacks(req.body?.events);
-  if (taps.length) {
-    await Promise.all(taps.map((t) => handleAccountTap(t)));
+  for (const tap of buildPostbacks(events)) work.push(handleAccountTap(tap));
+  // A photo takes a round trip through a vision model, so it runs alongside
+  // the text rather than behind it.
+  for (const img of buildImageEvents(events)) work.push(handleSlip(img));
+
+  const rows = buildInboxRows(events);
+  if (rows.length) work.push(handleTextRows(rows));
+
+  await Promise.all(work);
+  return undefined;
+});
+
+/**
+ * Fills in the accounts an inbox row can be attributed to without asking.
+ *
+ * A chat message rarely names an account in a way the sheet recognises, and a
+ * row with none attached can never move a balance. Two things are tried
+ * before falling back to the buttons: an account number in the message or on
+ * the slip, then the account 03_ACCOUNTS marks ใช้จ่ายรายวัน for spending.
+ */
+function attachAccounts(entries, data) {
+  const byNumber = new Map(
+    data.accounts.filter((a) => a.accountNumber).map((a) => [a.accountNumber, a.name])
+  );
+  const daily = data.dashboard.cash?.dailyAccount;
+
+  for (const r of entries) {
+    const named = (r.accountNumbers ?? []).map((n) => byNumber.get(n)).filter(Boolean);
+    if (named[0]) r.account = named[0];
+    else if (r.transactionType === 'Expense' && daily) r.account = daily;
+    // A second number is the other end of a transfer; the reviewer still
+    // confirms it, but it arrives filled in.
+    if (named[1]) r.destinationAccount = named[1];
   }
+  return data.accounts.filter((a) => a.status === 'Active');
+}
 
-  const rows = buildInboxRows(req.body?.events);
-  if (!rows.length) return undefined;
+/**
+ * The card a saved row is answered with, plus the buttons that book it.
+ *
+ * Every row is asked about, because a row with no account moves no balance
+ * and typing an account number into a chat is exactly the friction the bot
+ * exists to remove.
+ */
+function pendingReply(row, inboxId, pickable) {
+  const card = slipCard({ ...row, inboxId });
+  // LINE refuses a quick reply with no buttons in it, and a refused reply is
+  // silence — the row would be saved with the sender told nothing at all. If
+  // the account list could not be read, say so instead of attaching nothing.
+  if (!pickable.length) {
+    return replyToLine(row.replyToken, card).then(() =>
+      replyToLine(row.replyToken, `บันทึกไว้แล้ว ${inboxId}\nแต่ตอนนี้อ่านรายชื่อบัญชีไม่ได้ — ยืนยันในแอปแท็บ More`)
+    );
+  }
+  const two = needsTwoAccounts(row.transactionType);
+  return replyToLine(
+    row.replyToken,
+    card,
+    accountButtons(two ? 'a' : 'e', inboxId, orderAccounts(pickable, row.account))
+  );
+}
 
+async function handleTextRows(rows) {
   const commands = rows.filter((r) => r.command);
-  const entries = rows.filter((r) => !r.command);
+  const chats = rows.filter((r) => r.chat !== undefined);
+  const entries = rows.filter((r) => !r.command && r.chat === undefined);
 
-  // A chat message rarely names an account in a way the sheet recognises, and
-  // a row with none attached can never move a balance. Two things are tried
-  // before falling back to the reviewer: an account number typed in the
-  // message, then the account 03_ACCOUNTS marks ใช้จ่ายรายวัน for spending.
-  // Accounts money can sit in or move between — what the buttons offer.
+  const replies = chats.map((c) => replyToLine(c.replyToken, personaReply(c.chat)));
+
   let pickable = [];
-
   if (entries.length) {
     try {
-      const data = await getWealthData();
-      pickable = data.accounts.filter((a) => a.status === 'Active');
-      const byNumber = new Map(
-        data.accounts.filter((a) => a.accountNumber).map((a) => [a.accountNumber, a.name])
-      );
-      const daily = data.dashboard.cash?.dailyAccount;
-
-      for (const r of entries) {
-        const named = (r.accountNumbers ?? []).map((n) => byNumber.get(n)).filter(Boolean);
-        if (named[0]) r.account = named[0];
-        else if (r.transactionType === 'Expense' && daily) r.account = daily;
-        // A second number is the other end of a transfer; the reviewer still
-        // confirms it, but it arrives filled in.
-        if (named[1]) r.destinationAccount = named[1];
-      }
+      pickable = attachAccounts(entries, await getWealthData());
     } catch (err) {
       // Not fatal: the row is still worth keeping, just unattributed.
       console.error('line-webhook: could not resolve accounts', err.message);
     }
   }
 
-  // A failed write must not be answered with "บันทึกแล้ว". The sender would
-  // stop keeping the receipt on the strength of a confirmation that is not
-  // true, and the row would be lost with nobody aware of it.
-  let saved = true;
-  let writeError = '';
+  // A failed write must not be answered with a confirmation. The sender would
+  // stop keeping the receipt on the strength of one that is not true, and the
+  // row would be lost with nobody aware of it.
   let writtenIds = [];
+  let writeError = '';
   if (entries.length) {
     try {
       writtenIds = await writeInboxRows(entries);
       cache.clear();
     } catch (err) {
-      saved = false;
       writeError = err.message;
       console.error('line-webhook: write failed', err.message);
     }
   }
 
-  // Every saved row is answered with the account question, because a row with
-  // no account moves no balance and typing an account number into a chat is
-  // exactly the friction the bot exists to remove.
-  const replies = entries.map((r, i) => {
-    if (!saved) {
-      return replyToLine(
-        r.replyToken,
-        `บันทึกไม่สำเร็จ — เขียนลงชีตไม่ได้\n${writeError}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`
+  entries.forEach((r, i) => {
+    if (writeError) {
+      replies.push(
+        replyToLine(
+          r.replyToken,
+          `บันทึกไม่สำเร็จ — เขียนลงชีตไม่ได้\n${writeError}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`
+        )
       );
+      return;
     }
     const inboxId = writtenIds[i];
-    if (!inboxId || !r.amount) return replyToLine(r.replyToken, replyText(r));
-
-    const two = needsTwoAccounts(r.transactionType);
-    const question = two ? 'จ่ายจากบัญชีไหน' : 'หักจากบัญชีไหน';
-    return replyToLine(
-      r.replyToken,
-      `${replyText(r)}\n\n${question}`,
-      accountButtons(two ? 'a' : 'e', inboxId, orderAccounts(pickable, r.account))
-    );
+    if (!inboxId || !r.amount) {
+      replies.push(replyToLine(r.replyToken, replyText(r)));
+      return;
+    }
+    replies.push(pendingReply(r, inboxId, pickable));
   });
 
   if (commands.length) {
     try {
       const data = await getWealthData();
       for (const c of commands) {
-        replies.push(replyToLine(c.replyToken, commandReply(c.command, data)));
+        const card =
+          c.command === 'budget' ? budgetCard(data) : c.command === 'portfolio' ? portfolioCard(data) : null;
+        replies.push(replyToLine(c.replyToken, card ?? commandReply(c.command, data)));
       }
     } catch (err) {
       console.error('line-webhook: read failed', err.message);
@@ -239,8 +290,51 @@ app.post('/api/line-webhook', async (req, res) => {
   }
 
   await Promise.all(replies);
-  return undefined;
-});
+}
+
+/**
+ * One photographed slip.
+ *
+ * The reply token is spent on the result rather than on an acknowledgement,
+ * because it can only be used once and "got it, reading…" is worth less than
+ * the reading itself. A slip that cannot be read says so — it is never
+ * guessed into a row, since a wrong amount confirmed by a tap is harder to
+ * find later than a slip that was simply not recorded.
+ */
+async function handleSlip({ messageId, replyToken, receivedAt }) {
+  if (!visionConfigured()) {
+    return replyToLine(
+      replyToken,
+      'ยังอ่านสลิปไม่ได้ — ต้องตั้งค่า GEMINI_API_KEY ก่อน\nระหว่างนี้พิมพ์มาได้เลย เช่น "ข้าว 120"'
+    );
+  }
+
+  let row;
+  try {
+    const slip = await readSlip(await fetchLineImage(messageId));
+    row = slipToRow(slip, { receivedAt });
+  } catch (err) {
+    console.error('line-webhook: slip read failed', err.message);
+    return replyToLine(replyToken, `อ่านสลิปไม่สำเร็จ — ${err.message}\nลองถ่ายใหม่ให้ชัดขึ้น หรือพิมพ์ยอดมาแทน`);
+  }
+
+  let pickable = [];
+  try {
+    pickable = attachAccounts([row], await getWealthData());
+  } catch (err) {
+    console.error('line-webhook: could not resolve accounts', err.message);
+  }
+
+  try {
+    const [inboxId] = await writeInboxRows([row]);
+    cache.clear();
+    if (!inboxId) return replyToLine(replyToken, slipCard(row));
+    return pendingReply({ ...row, replyToken }, inboxId, pickable);
+  } catch (err) {
+    console.error('line-webhook: slip write failed', err.message);
+    return replyToLine(replyToken, `บันทึกไม่สำเร็จ — ${err.message}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`);
+  }
+}
 
 /**
  * Pushes the month's DCA plan, scores and the news behind them to LINE.
@@ -298,7 +392,11 @@ async function handleAccountTap({ step, inboxId, answers, replyToken }) {
     try {
       const data = await getWealthData();
       const pickable = data.accounts.filter((a) => a.status === 'Active');
-      retry = accountButtons(step, inboxId, pickable, step === 'b' ? [first] : []);
+      // An empty quick reply is rejected outright, taking the error message
+      // with it — better no buttons than no reply.
+      if (pickable.length) {
+        retry = accountButtons(step, inboxId, pickable, step === 'b' ? [first] : []);
+      }
     } catch {
       /* offering a retry is a bonus; the message matters more */
     }

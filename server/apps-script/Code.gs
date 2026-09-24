@@ -206,6 +206,19 @@ function monthKey(v) {
  * read back each time rather than counted, so a manually added row does not
  * cause a collision.
  */
+/**
+ * When the transaction happened. A slip read by the bot carries its own date;
+ * a typed message does not, so the time it was sent is the best available
+ * answer. An unreadable date falls back rather than throwing — a row with
+ * today's date is worth far more than no row.
+ */
+function transactionDate(r, fallback) {
+  var raw = r.transactionDate || r.receivedAt;
+  if (!raw) return fallback;
+  var d = new Date(raw);
+  return isNaN(d.getTime()) ? fallback : d;
+}
+
 function appendInbox(rows) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INBOX_TAB);
   if (!sheet) throw new Error('no tab ' + INBOX_TAB);
@@ -235,7 +248,9 @@ function appendInbox(rows) {
       r.transactionType || '',
       r.amount === '' || r.amount == null ? '' : Number(r.amount),
       r.currency || 'THB',
-      r.receivedAt ? new Date(r.receivedAt) : today,
+      // The date the money moved, not the date the message arrived. A slip
+      // photographed three days later belongs in the month it was paid.
+      transactionDate(r, today),
       r.account || '',
       r.category || '',
       r.asset || '',

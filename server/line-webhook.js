@@ -27,6 +27,19 @@ export function buildPostbacks(events) {
     .map((e) => ({ ...decode(e.postback.data), replyToken: e.replyToken ?? '' }));
 }
 
+// A photo is a slip until proven otherwise. It is collected separately from
+// text because reading it costs a call to a vision model, which the caller
+// may not have configured.
+export function buildImageEvents(events) {
+  return (events ?? [])
+    .filter((e) => e?.type === 'message' && e?.message?.type === 'image')
+    .map((e) => ({
+      messageId: e.message.id,
+      replyToken: e.replyToken ?? '',
+      receivedAt: e.timestamp ? new Date(e.timestamp).toISOString() : '',
+    }));
+}
+
 export function buildInboxRows(events) {
   const rows = [];
   for (const event of events ?? []) {
@@ -42,21 +55,12 @@ export function buildInboxRows(events) {
 
     const parsed = parseLineMessage(event.message.text);
     if (!parsed.ok) {
-      rows.push({
-        source: 'LINE',
-        inputType: 'Text',
-        rawData: String(event.message.text ?? '').slice(0, 500),
-        // Kept rather than dropped: an unparsed message is still something the
-        // sender meant to record, and it is visible for review this way.
-        transactionType: '',
-        amount: '',
-        category: '',
-        confidence: 'Low',
-        status: 'Need Review',
-        receivedAt: event.timestamp ? new Date(event.timestamp).toISOString() : '',
-        replyToken: event.replyToken ?? '',
-        error: parsed.error,
-      });
+      // No amount anywhere in it, so there is nothing to record. Filing it
+      // would leave the reviewer a row with a blank in every money column;
+      // answering it as small talk at least admits the bot did not
+      // understand. This is last on purpose — a message that IS money has
+      // already been taken by the branches above.
+      rows.push({ chat: String(event.message.text ?? ''), replyToken: event.replyToken ?? '' });
       continue;
     }
 
@@ -82,9 +86,6 @@ export function buildInboxRows(events) {
 
 export function replyText(row) {
   if (row.command) return null; // answered from sheet data by the caller
-  if (row.error === 'no-amount') {
-    return 'ไม่เจอจำนวนเงินในข้อความ ลองพิมพ์แบบนี้: ข้าว 120';
-  }
   const amount = Number(row.amount).toLocaleString('th-TH');
   // A transfer moves money without spending or earning it, so it gets neither
   // sign — showing "-500" for money you still have reads as a loss.

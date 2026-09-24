@@ -64,11 +64,15 @@ export async function reviewInboxRow(inboxId, action, accounts = {}) {
 
 // LINE's reply token is single-use and expires in about a minute, so a failed
 // reply is logged rather than retried — the row is already saved either way.
-export async function replyToLine(replyToken, text, quickReply = null) {
+//
+// `body` is a string for a plain answer or a built message object for a card,
+// so a caller that has a card to send does not need a second function that
+// differs only in the shape of one field.
+export async function replyToLine(replyToken, body, quickReply = null) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   if (!token || !replyToken) return false;
 
-  const message = { type: 'text', text };
+  const message = typeof body === 'string' ? { type: 'text', text: body } : { ...body };
   if (quickReply) message.quickReply = quickReply;
 
   const res = await fetch(`${LINE_API}/v2/bot/message/reply`, {

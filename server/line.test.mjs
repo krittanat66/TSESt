@@ -90,9 +90,13 @@ const rows = buildInboxRows([
 ]);
 check(rows.length === 2, `rows: ${rows.length} (stickers and follows are not transactions)`);
 check(rows[0].category === 'Food' && rows[0].amount === 120, 'first row parsed');
-check(rows[1].error === 'no-amount' && rows[1].amount === '', 'unparsed message kept for review');
+// A message with no amount in it is not money and is answered as small talk;
+// filing it would leave the reviewer a row that is blank in every column that
+// matters.
+check(rows[1].chat === 'สวัสดี' && rows[1].amount === undefined, 'a message with no amount is chat');
 // Nothing from a chat message may skip review.
-check(rows.every((r) => r.status === 'Need Review'), 'every row must wait for review');
+check(rows.filter((r) => r.amount).every((r) => r.status === 'Need Review'),
+  'every row that carries money must wait for review');
 check(replyText(rows[0]).includes('120'), 'reply names the amount');
 check(replyText(rows[0]).includes('-120'), 'an expense is shown as money out');
 const transferRow = buildInboxRows([
@@ -101,7 +105,7 @@ const transferRow = buildInboxRows([
 // No minus sign: the money is still yours, just somewhere else.
 check(!replyText(transferRow).includes('-4,000'), 'a transfer is not shown as a loss');
 check(replyText(transferRow).includes('ย้ายเงิน'), 'a transfer says so');
-check(replyText(rows[1]).includes('ข้าว 120'), 'failure reply shows the expected format');
+
 // The account buttons follow in the same reply, so nothing points at the app.
 check(!replyText(rows[0]).includes('แอป'), 'the reply no longer sends you to the app');
 
