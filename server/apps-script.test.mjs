@@ -31,6 +31,7 @@ function makeSheet(name, header, rows = []) {
       setValues: (vals) => vals.forEach((row, i) => row.forEach((v, j) => put(r + i, c + j, v))),
       setValue: (v) => put(r, c, v),
     }),
+    insertRowsAfter: (after, n) => { grid.splice(after + 1, 0, ...Array.from({ length: n }, () => [])); },
     col: (h) => header.indexOf(h) + 2,
     rowOf: (col, value) => grid.findIndex((row) => row?.[sheet.col(col)] === value),
   };
@@ -60,7 +61,15 @@ function workbook() {
   const budget = makeSheet('10_BUDGET',
     ['Month', 'Category', 'Budget', 'Actual', 'Difference', 'Usage %', 'Status', 'Note', ''],
     months.flatMap((m) => cats.map((c) => [m, c, 1000, 0, 1000, 0, 'Normal', ''])));
-  const sheets = { '03_ACCOUNTS': accounts, '04_TRANSACTIONS': tx, '16_INBOX': inbox, '10_BUDGET': budget };
+  // 05_CATEGORIES as in the sheet: the list, a blank row, then the rule note.
+  const categories = makeSheet('05_CATEGORIES', ['Category ID', 'Type', 'Category', 'Cash Flow Group', 'Active', 'Note'], [
+    ['CAT-001', 'Income', 'Salary', 'Income', 'Yes', ''],
+    ['CAT-008', 'Income', 'Other Income', 'Income', 'Yes', ''],
+    ['CAT-022', 'Investment', 'PVD', 'Saving / Investment', 'Yes', ''],
+    [],
+    ['กติกา: Transfer ระหว่างบัญชีของตัวเอง ไม่นับเป็น Income'],
+  ]);
+  const sheets = { '03_ACCOUNTS': accounts, '04_TRANSACTIONS': tx, '16_INBOX': inbox, '10_BUDGET': budget, '05_CATEGORIES': categories };
 
   // The J-column formula from ops-account-movement: opening, plus what
   // arrived as Destination, minus what left as Source, after Opening Date.
@@ -80,7 +89,7 @@ function workbook() {
       row[accounts.col('Current Balance')] = bal;
     }
   }
-  return { sheets, recalc, accounts, tx, inbox, budget };
+  return { sheets, recalc, accounts, tx, inbox, budget, categories };
 }
 
 function loadCodeGs(book) {
@@ -99,7 +108,7 @@ function loadCodeGs(book) {
     Logger: { log() {} },
   };
   const src = readFileSync(new URL('./apps-script/Code.gs', import.meta.url), 'utf8');
-  const names = ['confirmInbox', 'rejectInbox', 'appendInbox', 'accountBalances', 'markBudgetTransfer'];
+  const names = ['confirmInbox', 'rejectInbox', 'appendInbox', 'accountBalances', 'markBudgetTransfer', 'ensureCategories'];
   // eslint-disable-next-line no-new-func
   const factory = new Function(...Object.keys(globals), `${src}\nreturn { ${names.join(', ')} };`);
   return factory(...Object.values(globals));
@@ -176,6 +185,23 @@ function inboxRow(gs, fields) {
   let msg = '';
   try { gs.markBudgetTransfer('2026-12', 'Cat'); } catch (e) { msg = e.message; }
   check(/ไม่พบแถว/.test(msg), `a month with no row is refused, not guessed: ${msg}`);
+}
+
+// --- Categories for money to and from other people ------------------------
+{
+  const book = workbook();
+  const gs = loadCodeGs(book);
+  const C = book.categories;
+  inboxRow(gs, { transactionType: 'Income', amount: 300, category: 'Received from Others' });
+  const list = C.grid.slice(6).filter((r) => r?.[2]).map((r) => `${r[2]}:${r[4]}`);
+  check(list.includes('CAT-023:Received from Others') && list.includes('CAT-027:Debt Repayment'),
+    `the five categories follow CAT-022: ${list.join(', ')}`);
+  const noteRow = C.grid.findIndex((r) => String(r?.[2] ?? '').startsWith('กติกา'));
+  check(noteRow > 0 && noteRow === 6 + 3 + 5 + 1, `the rule note is pushed down, not overwritten (row ${noteRow})`);
+  const before = C.grid.length;
+  inboxRow(gs, { transactionType: 'Expense', amount: 1, category: 'Food' });
+  check(C.grid.length === before, 'a second message adds nothing');
+  check(gs.ensureCategories() === 0, 'running it again finds everything present');
 }
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');

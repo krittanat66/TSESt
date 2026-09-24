@@ -426,5 +426,18 @@ const mark = appsCalls.find((c) => c.kind === 'budget-mark');
 check(mark?.month === '2026-09' && mark?.category === 'Cat', `the tick reaches the sheet: ${JSON.stringify(mark)}`);
 check(after?.type === 'flex', `answered with the card redrawn: ${after?.text ?? after?.type}`);
 
+// --- 12. A slip for money a friend sent -------------------------------------
+confirmed.clear(); appsCalls.length = 0;
+reading = { kind: 'Income', amount: 500, currency: 'THB', merchant: 'นาย สมชาย ใจดี', fromAccountNumber: '9876543210', toAccountNumber: '0690', confidence: 0.93 };
+lastType = 'Income'; lastAmount = 500;
+[card] = await photo();
+const inc = texts(card?.contents);
+check(inc.includes('นาย สมชาย ใจดี') && inc.includes('เข้าบัญชี') && inc.includes('SCB Daily Living Account'), `sender → your account: ${inc}`);
+[done] = await tap(buttons(card.contents)[0].data);
+const incBooking = appsCalls.find((c) => c.kind === 'inbox-confirm');
+check(incBooking?.destAccount === 'SCB Daily Living Account' && !incBooking?.sourceAccount,
+  `received money is booked into the account: from=${incBooking?.sourceAccount} to=${incBooking?.destAccount}`);
+console.log('  friend slip →', inc);
+
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

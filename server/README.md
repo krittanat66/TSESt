@@ -404,6 +404,24 @@ than it looks: a bare `ขอ` would swallow `ขอสรุป`, and `เง�
 already answered whenever a message carries no money in it — and a mode that
 could be left on would be a way to lose an expense.
 
+### Money to and from other people
+
+| พิมพ์ | ได้ |
+| --- | --- |
+| `เพื่อนโอนมา 300`, `รับเงินจากลูกค้า 1500` | Income · Received from Others |
+| `เพื่อนคืนเงิน 500`, `ได้เงินคืน 200` | Income · Loan Repayment |
+| `ยืมเพื่อน 1000` | Income · Borrowed |
+| `ให้เพื่อนยืม 500` | Expense · Lent Out |
+| `คืนเงินเพื่อน 500`, `ใช้หนี้พี่ 1000` | Expense · Debt Repayment |
+
+These are checked before the transfer words: `โอน` alone means your own
+accounts, but `เพื่อนโอนมา` is money from someone else. Who does what picks
+the side — `ให้เพื่อนยืม` is money out, `ยืมเพื่อน` money in. A slip for money
+someone sent you is read as Income, from the sender named on it, into your
+receiving account. Code.gs adds the five categories to 05_CATEGORIES on the
+first message after it is deployed, inserting rows so the note beneath the
+table is kept.
+
 ### Spending budgets (เช็คงบ)
 
 Daily Expenses (฿7,000) and Cat (฿2,000) are not drained over the month on

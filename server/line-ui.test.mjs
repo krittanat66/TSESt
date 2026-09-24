@@ -220,5 +220,13 @@ check(accountByNumber(accs, '690') === '', 'three digits is too few to mean one 
 check(slipToRow({ kind: 'Transfer', amount: 1, fromAccountNumber: 'xxx', toAccountNumber: '0690' }).accountNumbers[0] === '',
   'an unreadable from-account stays in its place');
 
+// --- a slip for money received from someone -----------------------------------
+const fromFriend = slipToRow({ kind: 'Income', amount: 500, merchant: 'นาย ก', fromAccountNumber: '1234567890', toAccountNumber: '0690', confidence: 0.9 });
+check(fromFriend.transactionType === 'Income' && fromFriend.category === 'Received from Others', `received slip: ${fromFriend.transactionType}/${fromFriend.category}`);
+// Only the receiving account is yours; the sender's must not be booked as a source.
+check(fromFriend.accountNumbers.join() === '0690', `only the receiving account is kept: ${fromFriend.accountNumbers}`);
+const incCard = JSON.stringify(slipCard({ ...fromFriend, account: 'SCB Daily Living Account', inboxId: 'INBOX-0100' }));
+check(incCard.includes('เข้าบัญชี'), 'a received slip reads as money in');
+
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

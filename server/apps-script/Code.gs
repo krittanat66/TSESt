@@ -234,9 +234,58 @@ function transactionDate(r, fallback) {
   return isNaN(d.getTime()) ? fallback : d;
 }
 
+const CATEGORIES_TAB = '05_CATEGORIES';
+
+// Money to and from other people. 05_CATEGORIES is the master list every
+// transaction must use, so the bot's categories are added to it rather than
+// written into the ledger unannounced.
+const EXTRA_CATEGORIES = [
+  ['Income', 'Received from Others', 'Income', 'รับเงินที่คนอื่นโอนให้'],
+  ['Income', 'Loan Repayment', 'Income', 'เงินที่ให้ยืมไป ได้คืนมา'],
+  ['Income', 'Borrowed', 'Income', 'ยืมเงินจากคนอื่น (เป็นหนี้ ต้องคืน)'],
+  ['Expense', 'Lent Out', 'Expense', 'ให้คนอื่นยืม (จะได้คืน)'],
+  ['Expense', 'Debt Repayment', 'Expense', 'คืนเงินที่ยืมมา'],
+];
+
+/**
+ * Adds any of EXTRA_CATEGORIES missing from 05_CATEGORIES, as new rows
+ * directly under the last CAT- row — inserted, so the rule note below the
+ * table is pushed down rather than overwritten. Safe to run every time.
+ */
+function ensureCategories() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CATEGORIES_TAB);
+  if (!sheet) return 0;
+  var last = sheet.getLastRow();
+  if (last < FIRST_DATA_ROW) return 0;
+  var rows = sheet.getRange(FIRST_DATA_ROW, 2, last - FIRST_DATA_ROW + 1, 3).getValues();
+  var lastCat = -1;
+  var maxNum = 0;
+  var have = {};
+  rows.forEach(function (r, i) {
+    var m = String(r[0]).trim().match(/^CAT-(\d+)$/);
+    if (!m) return;
+    lastCat = FIRST_DATA_ROW + i;
+    maxNum = Math.max(maxNum, Number(m[1]));
+    have[String(r[2]).trim()] = true;
+  });
+  if (lastCat === -1) return 0;
+  var missing = EXTRA_CATEGORIES.filter(function (c) { return !have[c[1]]; });
+  if (!missing.length) return 0;
+
+  sheet.insertRowsAfter(lastCat, missing.length);
+  var values = missing.map(function (c, k) {
+    return ['CAT-' + ('000' + (maxNum + k + 1)).slice(-3), c[0], c[1], c[2], 'Yes', c[3]];
+  });
+  sheet.getRange(lastCat + 1, 2, values.length, 6).setValues(values);
+  return values.length;
+}
+
 function appendInbox(rows) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INBOX_TAB);
   if (!sheet) throw new Error('no tab ' + INBOX_TAB);
+  // The first message after this version is deployed adds the new
+  // categories; after that it finds them all present and does nothing.
+  try { ensureCategories(); } catch (err) { Logger.log('ensureCategories: ' + err); }
 
   var lastRow = sheet.getLastRow();
   var nextNum = 1;

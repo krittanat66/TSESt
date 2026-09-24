@@ -70,7 +70,7 @@ const PROMPT = `คุณกำลังอ่านสลิปธนาคา�
 
 โครงสร้าง:
 {
-  "kind": "Expense" | "Investment" | "Transfer",
+  "kind": "Expense" | "Investment" | "Transfer" | "Income",
   "amount": number,
   "currency": "THB" | "USD",
   "date": "YYYY-MM-DD",
@@ -86,6 +86,7 @@ const PROMPT = `คุณกำลังอ่านสลิปธนาคา�
 - Transfer = โอนระหว่างบัญชีของเจ้าของเอง (ปลายทางเป็นชื่อเดียวกับผู้โอน หรือเป็นบัญชีออมทรัพย์/ฉุกเฉิน/Dime ของตัวเอง)
 - Investment = ซื้อหุ้น กองทุน ทอง หรือ DCA (ให้ใส่ ticker ใน asset)
 - Expense = จ่ายให้ร้านค้าหรือบุคคลอื่น
+- Income = คนอื่นโอนเงินเข้าบัญชีของเจ้าของ (ผู้โอนเป็นคนอื่น ผู้รับเป็นเจ้าของสลิป) เช่น เพื่อนคืนเงิน ลูกค้าจ่าย ให้ใส่ชื่อผู้โอนใน merchant
 ถ้าไม่แน่ใจระหว่าง Transfer กับ Expense ให้ตอบ Expense และตั้ง confidence ต่ำ
 merchant คือชื่อผู้รับเงิน/ร้านค้า (เช่น "เคเอฟซี" ไม่ใช่ Biller ID)
 
@@ -112,7 +113,7 @@ function parseJsonReply(raw) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-const KINDS = new Set(['Expense', 'Investment', 'Transfer']);
+const KINDS = new Set(['Expense', 'Investment', 'Transfer', 'Income']);
 
 /**
  * Asks the vision model what the slip says.
@@ -263,7 +264,7 @@ export async function readSlip({ buffer, mimeType }) {
   return out;
 }
 
-const TYPE_BY_KIND = { Expense: 'Expense', Investment: 'Buy', Transfer: 'Transfer' };
+const TYPE_BY_KIND = { Expense: 'Expense', Investment: 'Buy', Transfer: 'Transfer', Income: 'Income' };
 
 /**
  * A slip reading as a 16_INBOX row.
@@ -281,7 +282,12 @@ export function slipToRow(slip, { receivedAt = '' } = {}) {
   // Positions are kept, blanks included: [from, to]. Dropping an unreadable
   // "from" would promote the "to" into its place and book the money out of
   // the account it went into.
-  const numbers = [slip.fromAccountNumber, slip.toAccountNumber]
+  //
+  // Money received has one account of yours, and it is the receiving end, so
+  // it goes first — the bot books a single account for income as where the
+  // money arrived, never as where it left.
+  const ends = slip.kind === 'Income' ? [slip.toAccountNumber] : [slip.fromAccountNumber, slip.toAccountNumber];
+  const numbers = ends
     .map((n) => String(n ?? '').replace(/\D/g, ''))
     .map((n) => (n.length >= 4 ? n : ''));
 
@@ -296,7 +302,7 @@ export function slipToRow(slip, { receivedAt = '' } = {}) {
     transactionType: TYPE_BY_KIND[slip.kind] ?? 'Expense',
     amount: slip.amount,
     currency: slip.currency === 'USD' ? 'USD' : 'THB',
-    category: slip.kind === 'Expense' ? 'Other' : '',
+    category: slip.kind === 'Expense' ? 'Other' : slip.kind === 'Income' ? 'Received from Others' : '',
     asset: slip.kind === 'Investment' ? String(slip.asset ?? '').toUpperCase() : '',
     merchant: slip.merchant ?? '',
     date: slip.date ?? '',

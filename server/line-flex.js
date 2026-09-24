@@ -463,6 +463,20 @@ export function portfolioCard(plan, { month, scoresMonth, reserve = 0 } = {}) {
   });
 }
 
+// How a category reads on a card. Money to and from other people is spelled
+// out, since "Lent Out" and "Loan Repayment" are easy to mix up at a glance.
+const CATEGORY_TH = {
+  Salary: 'เงินเดือน',
+  Bonus: 'โบนัส',
+  Interest: 'ดอกเบี้ย',
+  Dividend: 'ปันผล',
+  'Received from Others': 'รับเงินจากผู้อื่น',
+  'Loan Repayment': 'ได้คืนเงินที่ให้ยืม',
+  Borrowed: 'ยืมเงินมา',
+  'Lent Out': 'ให้ยืมเงิน',
+  'Debt Repayment': 'คืนเงินที่ยืมมา',
+};
+
 const TYPE_TITLE = {
   expense: 'รายจ่าย',
   investment: 'การลงทุน',
@@ -564,7 +578,7 @@ export function confirmCard(entry, { actions = null, done = false, txId = '', ba
     entry.destinationAccount ||
     (tone === 'investment' ? entry.asset : '') ||
     entry.merchant ||
-    (tone === 'expense' ? entry.category || 'ค่าใช้จ่าย' : '—');
+    (tone === 'expense' ? CATEGORY_TH[entry.category] || entry.category || 'ค่าใช้จ่าย' : '—');
   const destinationIsAccount = Boolean(entry.destinationAccount);
 
   // Income runs the other way: it comes from outside (the employer, a
@@ -572,7 +586,9 @@ export function confirmCard(entry, { actions = null, done = false, txId = '', ba
   const income = tone === 'income';
   const fromLabel = income ? 'จาก' : 'จากบัญชี';
   const fromValue = income
-    ? { Salary: 'เงินเดือน', Bonus: 'โบนัส', Interest: 'ดอกเบี้ย', Dividend: 'ปันผล' }[entry.category] ||
+    ? // Money from a person names the person when the slip did.
+      (entry.category === 'Received from Others' && entry.merchant) ||
+      CATEGORY_TH[entry.category] ||
       entry.category ||
       'รายรับ'
     : entry.account || 'ยังไม่ได้เลือก';

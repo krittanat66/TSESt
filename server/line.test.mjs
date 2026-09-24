@@ -212,5 +212,26 @@ const taps = buildPostbacks([
 check(taps.length === 1, `taps: ${taps.length}`);
 check(taps[0].step === 'a' && taps[0].replyToken === 'p1', 'tap carries its reply token');
 
+// --- money to and from other people -----------------------------------------
+// "โอน" alone means your own accounts; with a person it is money from them.
+const people = [
+  ['เพื่อนโอนมา 300', 'Income', 'Received from Others'],
+  ['แม่โอนมาให้ 2000', 'Income', 'Received from Others'],
+  ['รับเงินจากลูกค้า 1500', 'Income', 'Received from Others'],
+  ['เพื่อนคืนเงิน 500', 'Income', 'Loan Repayment'],
+  ['ได้เงินคืน 200', 'Income', 'Loan Repayment'],
+  ['ยืมเพื่อน 1000', 'Income', 'Borrowed'],
+  ['ให้เพื่อนยืม 500', 'Expense', 'Lent Out'],
+  ['คืนเงินเพื่อน 500', 'Expense', 'Debt Repayment'],
+  ['ใช้หนี้พี่ 1000', 'Expense', 'Debt Repayment'],
+  // and the old meanings still hold
+  ['โอน 500 เข้าบัญชีเงินเก็บ', 'Transfer', 'Transfer'],
+  ['เติมเงินเข้าบัญชีค่าใช้จ่าย 500', 'Transfer', 'Transfer'],
+];
+for (const [text, type, category] of people) {
+  const r = parseLineMessage(text);
+  check(r.transactionType === type && r.category === category, `${text} → ${r.transactionType}/${r.category}, want ${type}/${category}`);
+}
+
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

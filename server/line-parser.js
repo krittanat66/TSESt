@@ -37,6 +37,31 @@ const TRANSFER_WORDS = [
   'โอน', 'เติมเงิน', 'ย้ายเงิน', 'เข้าบัญชี', 'ถอน', 'ฝากเงิน', 'transfer',
 ];
 
+// Money that moves between you and someone else — not your own accounts.
+// Checked before the transfer words, because "เพื่อนโอนมา 300" contains
+// "โอน" and would otherwise be filed as a move between your own accounts,
+// which counts as neither income nor spending.
+//
+// Who did what decides the side: "ให้เพื่อนยืม" is money out, "ยืมเพื่อน" is
+// money in; "เพื่อนคืนเงิน" is money in, "คืนเงินเพื่อน" is money out.
+const PEOPLE = 'เพื่อน|แม่|พ่อ|พี่|น้อง|ป้า|ลุง|น้า|อา|ยาย|ตา|ปู่|ย่า|แฟน|ลูกค้า|หัวหน้า|บริษัท';
+const OTHER_PEOPLE_RULES = [
+  // Paying back what you borrowed, or lending out: money leaves.
+  ['Expense', 'Debt Repayment', /^\s*(คืน|ใช้หนี้)|ใช้หนี้/],
+  ['Expense', 'Lent Out', /ให้\S*\s*\S*ยืม/],
+  // Someone paying you back, borrowing from someone, or being sent money.
+  ['Income', 'Loan Repayment', /(ได้(เงิน|ตัง)?คืน|คืน(เงิน|ตัง)?(มา|ให้)|\S+\s*คืน(เงิน|ตัง))/],
+  ['Income', 'Borrowed', /ยืม/],
+  ['Income', 'Received from Others', new RegExp(`(รับเงิน|รับโอน|โอนมาให้|โอนให้(เรา|ฉัน|ผม)|ได้เงินจาก|(${PEOPLE})\\S*\\s*โอน)`)],
+];
+
+function otherPeople(text) {
+  for (const [type, category, re] of OTHER_PEOPLE_RULES) {
+    if (re.test(text)) return { type, category };
+  }
+  return null;
+}
+
 const INCOME_CATEGORY = [
   ['Salary', ['เงินเดือน', 'salary']],
   ['Bonus', ['โบนัส', 'bonus']],
@@ -113,6 +138,20 @@ export function parseLineMessage(raw) {
       currency: foreign ? 'USD' : 'THB',
       category: foreign ? 'US Stocks' : 'SET',
       asset: ticker,
+      confidence: 'High',
+      accountNumbers,
+      text,
+    };
+  }
+
+  const withSomeone = otherPeople(lower);
+  if (withSomeone) {
+    return {
+      ok: true,
+      transactionType: withSomeone.type,
+      amount,
+      currency: foreign ? 'USD' : 'THB',
+      category: withSomeone.category,
       confidence: 'High',
       accountNumbers,
       text,

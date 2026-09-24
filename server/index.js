@@ -699,9 +699,13 @@ async function handleSlipTap({ step, inboxId, answers, replyToken }) {
 
     if (step === 'ok') {
       if (!entry.account) return replyToLine(replyToken, 'ยังไม่ได้เลือกบัญชี กด ✏️ เปลี่ยนบัญชี');
+      // Income's one account is where the money arrived. Sent as the
+      // destination here, so it books correctly even on a Code.gs that
+      // predates its own swap.
+      const incoming = meta.type === 'Income';
       const result = await reviewInboxRow(inboxId, 'confirm', {
-        source: entry.account,
-        destination: entry.destinationAccount,
+        source: incoming ? '' : entry.account,
+        destination: incoming ? entry.account : entry.destinationAccount,
       });
       cache.clear();
       const balances = await balancesAfter(result, [entry.account, entry.destinationAccount]);
