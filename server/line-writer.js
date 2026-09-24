@@ -62,29 +62,60 @@ export async function reviewInboxRow(inboxId, action, accounts = {}) {
   });
 }
 
-// LINE's reply token is single-use and expires in about a minute, so a failed
-// reply is logged rather than retried — the row is already saved either way.
-//
-// `body` is a string for a plain answer or a built message object for a card,
-// so a caller that has a card to send does not need a second function that
-// differs only in the shape of one field.
-export async function replyToLine(replyToken, body, quickReply = null) {
+// Who sent the message a reply token answers, kept briefly. Used only when
+// the reply itself is refused — see replyToLine.
+const senders = new Map();
+const SENDER_TTL_MS = 10 * 60 * 1000;
+
+export function rememberSender(replyToken, userId) {
+  if (!replyToken || !userId) return;
+  senders.set(replyToken, userId);
+  const t = setTimeout(() => senders.delete(replyToken), SENDER_TTL_MS);
+  t.unref?.();
+}
+
+async function linePost(path, payload) {
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token || !replyToken) return false;
-
-  const message = typeof body === 'string' ? { type: 'text', text: body } : { ...body };
-  if (quickReply) message.quickReply = quickReply;
-
-  const res = await fetch(`${LINE_API}/v2/bot/message/reply`, {
+  return fetch(`${LINE_API}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ replyToken, messages: [message] }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
   });
-  if (!res.ok) console.error('line reply failed', res.status, await res.text().catch(() => ''));
-  return res.ok;
+}
+
+// `body` is a string for a plain answer, a built message object for a card,
+// or an array of either to send several in the one reply — a reply token is
+// single-use, so a second reply on the same token is always refused.
+//
+// A reply token lasts about a minute. When the server was asleep and LINE
+// redelivers the message later, the token has expired and the reply is
+// refused; the answer then goes out as a push to the sender instead, so the
+// message is still answered rather than silently dropped.
+export async function replyToLine(replyToken, body, quickReply = null) {
+  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN || !replyToken) return false;
+
+  const messages = (Array.isArray(body) ? body : [body]).map((b) =>
+    typeof b === 'string' ? { type: 'text', text: b } : { ...b }
+  );
+  // Quick replies belong on the last message, where LINE shows them.
+  if (quickReply) messages[messages.length - 1].quickReply = quickReply;
+
+  const res = await linePost('/v2/bot/message/reply', { replyToken, messages });
+  if (res.ok) return true;
+
+  const detail = await res.text().catch(() => '');
+  const to = senders.get(replyToken);
+  if (res.status === 400 && to) {
+    const pushed = await linePost('/v2/bot/message/push', { to, messages });
+    if (pushed.ok) {
+      console.log('line reply expired; answered by push instead');
+      return true;
+    }
+    console.error('line push fallback failed', pushed.status, await pushed.text().catch(() => ''));
+    return false;
+  }
+  console.error('line reply failed', res.status, detail);
+  return false;
 }
 
 // Broadcast reaches every friend of the bot. For a personal account that is

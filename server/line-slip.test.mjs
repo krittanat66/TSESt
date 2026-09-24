@@ -27,6 +27,8 @@ const menuCalls = [];
 let existingMenus = [];
 let menuInvalid = false;
 let oldScript = false;
+const expiredTokens = new Set();
+const pushes = [];
 // What the stub script says it booked — set per case.
 let lastType = 'Transfer';
 let lastAmount = 2500;
@@ -36,6 +38,15 @@ const stub = createServer((req, res) => {
   req.on('data', (c) => (b += c));
   req.on('end', () => {
     res.setHeader('content-type', 'application/json');
+    // A reply token that has expired, as after a cold start.
+    if (req.url === '/v2/bot/message/reply' && expiredTokens.has(JSON.parse(b).replyToken)) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ message: 'Invalid reply token' }));
+    }
+    if (req.url === '/v2/bot/message/push') {
+      pushes.push(JSON.parse(b));
+      return res.end('{}');
+    }
     if (req.url.startsWith('/v2/bot/richmenu') || req.url.startsWith('/v2/bot/user/all/richmenu')) {
       menuCalls.push(`${req.method} ${req.url}`);
       if (req.url === '/v2/bot/richmenu/validate') {
@@ -361,6 +372,24 @@ const push = sent.find((x) => x.messages && !x.replyToken);
 check(forced.sent === true && Boolean(push), `forced reminder broadcast: ${JSON.stringify(forced)}`);
 check(push?.messages?.[0]?.text?.includes('฿17,303.25 – ฿18,903.25'), `the range: ${push?.messages?.[0]?.text}`);
 console.log('  payday →', push?.messages?.[0]?.text?.split('\n').join(' / '));
+
+// --- 9. Cold starts -----------------------------------------------------
+// LINE redelivers an event the sleeping server did not answer in time; the
+// first attempt may still be processed once the server is up. The same event
+// id must be handled once, or one expense becomes two rows.
+appsCalls.length = 0;
+const ev = { type: 'message', webhookEventId: 'EVT-1', message: { type: 'text', text: 'ข้าว 45' }, replyToken: 'fresh', source: { userId: 'U1' } };
+await deliver(ev);
+await deliver({ ...ev, deliveryContext: { isRedelivery: true } });
+check(appsCalls.filter((c) => c.kind === 'inbox').length === 1, `a redelivered event is recorded once: ${appsCalls.filter((c) => c.kind === 'inbox').length}`);
+
+// The redelivered event's reply token has expired: answer by push instead.
+pushes.length = 0;
+expiredTokens.add('stale');
+await deliver({ type: 'message', webhookEventId: 'EVT-2', message: { type: 'text', text: 'สแกนสลิป' },
+  replyToken: 'stale', source: { userId: 'U1' }, deliveryContext: { isRedelivery: true } });
+check(pushes.length === 1 && pushes[0].to === 'U1', `an expired reply falls back to a push: ${JSON.stringify(pushes)}`);
+check(pushes[0]?.messages?.[0]?.quickReply?.items?.length === 2, 'the push keeps the camera buttons');
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

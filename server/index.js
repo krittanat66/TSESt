@@ -26,7 +26,7 @@ import {
   slipAccountButtons,
   accountByNumber,
 } from './line-buttons.js';
-import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
+import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow, rememberSender } from './line-writer.js';
 import { commandReply, dcaDigest, SCAN_QUICK_REPLY } from './line-commands.js';
 import { personaReply } from './line-persona.js';
 import { slipCard, confirmCard, budgetCard, portfolioCard } from './line-flex.js';
@@ -175,7 +175,8 @@ app.post('/api/line-webhook', async (req, res) => {
   // rows. The delivery is acknowledged first and the write runs after.
   res.json({ ok: true });
 
-  const events = req.body?.events;
+  const events = freshEvents(req.body?.events);
+  for (const e of events) rememberSender(e.replyToken, e.source?.userId);
   const work = [];
 
   // A tap on an account button finishes a row that is already saved.
@@ -194,6 +195,28 @@ app.post('/api/line-webhook', async (req, res) => {
   await Promise.all(work);
   return undefined;
 });
+
+// Webhook events already handled, by LINE's own id. With redelivery on,
+// LINE sends an event again when the first attempt got no answer in time —
+// which is what happens while the free-plan server wakes up. Both copies can
+// arrive, and handling both would record the same expense twice.
+const seenEvents = new Map();
+const SEEN_TTL_MS = 60 * 60 * 1000;
+
+function freshEvents(events) {
+  const now = Date.now();
+  for (const [id, at] of seenEvents) if (now - at > SEEN_TTL_MS) seenEvents.delete(id);
+  return (events ?? []).filter((e) => {
+    const id = e?.webhookEventId;
+    if (!id) return true;
+    if (seenEvents.has(id)) {
+      console.log(`line-webhook: skipped duplicate ${id}`);
+      return false;
+    }
+    seenEvents.set(id, now);
+    return true;
+  });
+}
 
 /**
  * Fills in the accounts an inbox row can be attributed to without asking.
@@ -240,9 +263,12 @@ function pendingReply(row, inboxId, pickable) {
   // silence — the row would be saved with the sender told nothing at all. If
   // the account list could not be read, say so instead of attaching nothing.
   if (!pickable.length) {
-    return replyToLine(row.replyToken, card).then(() =>
-      replyToLine(row.replyToken, `บันทึกไว้แล้ว ${inboxId}\nแต่ตอนนี้อ่านรายชื่อบัญชีไม่ได้ — ยืนยันในแอปแท็บ More`)
-    );
+    // One reply with both messages: a reply token works once, so a second
+    // reply on it was always refused and the explanation never arrived.
+    return replyToLine(row.replyToken, [
+      card,
+      `บันทึกไว้แล้ว ${inboxId}\nแต่ตอนนี้อ่านรายชื่อบัญชีไม่ได้ ส่งข้อความเดิมมาใหม่อีกครั้งได้เลย`,
+    ]);
   }
   const two = needsTwoAccounts(row.transactionType);
   // 'i' books the one account as where income arrived; 'e' as where spending
@@ -606,7 +632,7 @@ async function handleSlipTap({ step, inboxId, answers, replyToken }) {
       const data = await getWealthData();
       const pickable = data.accounts.filter((a) => a.status === 'Active');
       if (!pickable.length) {
-        return replyToLine(replyToken, 'ตอนนี้อ่านรายชื่อบัญชีไม่ได้ — ยืนยันในแอปแท็บ More');
+        return replyToLine(replyToken, 'ตอนนี้อ่านรายชื่อบัญชีไม่ได้ ลองกดใหม่อีกครั้งในอีกสักครู่');
       }
       if (step === 'sa') {
         return replyToLine(
