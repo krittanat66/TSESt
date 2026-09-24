@@ -37,11 +37,6 @@ export function WealthProvider({ children }) {
   // throwing away whatever it was showing.
   const [refreshing, setRefreshing] = useState(false);
   const [fetchedAt, setFetchedAt] = useState(null);
-  // Inbox rows settled in this session, by id. The sheet is re-read after
-  // every confirm, but a row the read still reports as pending — or one
-  // settled from LINE before the next read — should not sit on screen asking
-  // to be confirmed again.
-  const [settled, setSettled] = useState({});
   const hasData = useRef(false);
   const lastLoad = useRef(0);
 
@@ -108,8 +103,8 @@ export function WealthProvider({ children }) {
     }
   }, []);
 
-  // Back from LINE after confirming there: re-read, so the app is not showing
-  // the row as still waiting. Throttled — switching apps is frequent.
+  // Back from LINE after booking there: re-read, so balances on screen
+  // include it. Throttled — switching apps is frequent.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || !hasData.current) return;
@@ -128,33 +123,6 @@ export function WealthProvider({ children }) {
     }
   }, [load]);
 
-  // Confirming is what moves a message into the ledger, so the result has to
-  // be reported rather than assumed: a failure that looked like a success
-  // would leave the row pending with the viewer believing it was booked.
-  const reviewInbox = useCallback(
-    async (id, action, accounts = {}) => {
-      const code = readPasscode();
-      try {
-        const res = await fetch(`${API_URL}/inbox/review`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(code ? { Authorization: `Bearer ${code}` } : {}),
-          },
-          body: JSON.stringify({ id, action, ...accounts }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) return { ok: false, error: body.error || `Server responded ${res.status}` };
-        setSettled((prev) => ({ ...prev, [id]: action === 'confirm' ? 'Confirmed' : 'Rejected' }));
-        load(); // in the background; the row is already gone from the list
-        return { ok: true, txId: body.txId };
-      } catch (err) {
-        return { ok: false, error: err.message };
-      }
-    },
-    [load]
-  );
-
   // Puts the 2×2 menu under the LINE chat. A server job rather than a script,
   // because the phone is the only place this app is run from.
   const installLineMenu = useCallback(async () => {
@@ -172,20 +140,9 @@ export function WealthProvider({ children }) {
     }
   }, []);
 
-  // What still needs a decision: not confirmed, not rejected, not settled
-  // here since the last read.
-  const pendingInbox = useMemo(
-    () =>
-      (data.inbox ?? []).filter(
-        (i) => i.status !== 'Confirmed' && i.status !== 'Rejected' && !settled[i.id]
-      ),
-    [data.inbox, settled]
-  );
-
   const value = useMemo(
     () => ({
       data,
-      pendingInbox,
       refreshing,
       fetchedAt,
       loading,
@@ -194,10 +151,9 @@ export function WealthProvider({ children }) {
       locked,
       unlock: (code) => load(code),
       refresh: () => load(),
-      reviewInbox,
       installLineMenu,
     }),
-    [data, pendingInbox, refreshing, fetchedAt, loading, error, isLive, locked, load, reviewInbox, installLineMenu]
+    [data, refreshing, fetchedAt, loading, error, isLive, locked, load, installLineMenu]
   );
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>;
