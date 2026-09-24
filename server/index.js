@@ -32,7 +32,8 @@ import { personaReply } from './line-persona.js';
 import { slipCard, confirmCard, budgetCard, portfolioCard } from './line-flex.js';
 import { visionConfigured, fetchLineImage, readSlip, slipToRow } from './line-vision.js';
 import { installRichMenu } from './line-richmenu-install.js';
-import { isPayday, nextPayday, thaiDate, paydayMessage } from './payday.js';
+import { buildDcaPlan, dcaBudget } from './dca-plan.js';
+import { isPayday, nextPayday, thaiDate, paydayMessage, bangkokDate } from './payday.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -343,7 +344,7 @@ async function handleTextRows(rows) {
       const data = await getWealthData();
       for (const c of sheetCommands) {
         const card =
-          c.command === 'budget' ? budgetCard(data) : c.command === 'portfolio' ? portfolioCard(data) : null;
+          c.command === 'budget' ? budgetCard(data) : c.command === 'portfolio' ? dcaCard(data) : null;
         replies.push(replyToLine(c.replyToken, card ?? commandReply(c.command, data)));
       }
     } catch (err) {
@@ -355,6 +356,22 @@ async function handleTextRows(rows) {
   }
 
   await Promise.all(replies);
+}
+
+/** The portfolio tile: holdings, scores, and this month's DCA split. */
+function dcaCard(data) {
+  const { budget, reserve } = dcaBudget(data.dca);
+  const latest = data.dcaScoresLatest ?? { month: data.dashboard?.monthKey, scores: data.dcaScores ?? [] };
+  const plan = buildDcaPlan({
+    holdings: data.investment?.byMarket?.usStocks?.holdings ?? [],
+    scores: latest.scores ?? [],
+    budget,
+  });
+  // The month in Bangkok when the sheet does not say, so the header is never
+  // left without one.
+  const { y, m } = bangkokDate();
+  const month = data.dashboard?.monthKey || `${y}-${String(m).padStart(2, '0')}`;
+  return portfolioCard(plan, { month, scoresMonth: latest.month, reserve });
 }
 
 /**

@@ -125,6 +125,14 @@ writeFileSync(fixture, JSON.stringify({
   ],
   dashboard: { month: 'ก.ย. 2026', cash: { dailyAccount: 'SCB Daily Living Account' } },
   monthly: { income: { plan: 21745 }, pvdDeducted: 2841.75 },
+  dca: [{ label: 'US Stocks', plan: 3000, actual: 0, percentage: 0 }, { label: 'Investment Reserve', plan: 1000, actual: 0, percentage: 0 }],
+  investment: { byMarket: { usStocks: { holdings: [
+    { asset: 'NVDA', value: 9000, returnPct: 51.3 }, { asset: 'MSFT', value: 4000, returnPct: 4.2 },
+    { asset: 'SCHD', value: 4000, returnPct: -1.5 }, { asset: 'AMPX', value: 3000, returnPct: 12 },
+  ] } } },
+  dcaScoresLatest: { month: '2026-09', scores: [
+    { ticker: 'NVDA', score: 8 }, { ticker: 'MSFT', score: 8 }, { ticker: 'SCHD', score: 2 }, { ticker: 'AMPX', score: 3 },
+  ] },
 }));
 
 const PORT = Number(process.env.TEST_SLIP_PORT || 3992);
@@ -390,6 +398,15 @@ await deliver({ type: 'message', webhookEventId: 'EVT-2', message: { type: 'text
   replyToken: 'stale', source: { userId: 'U1' }, deliveryContext: { isRedelivery: true } });
 check(pushes.length === 1 && pushes[0].to === 'U1', `an expired reply falls back to a push: ${JSON.stringify(pushes)}`);
 check(pushes[0]?.messages?.[0]?.quickReply?.items?.length === 2, 'the push keeps the camera buttons');
+
+// --- 10. The portfolio tile --------------------------------------------------
+const [pcard] = await deliver({ type: 'message', message: { type: 'text', text: 'เช็คพอร์ต' }, replyToken: 'r' });
+const ptxt = texts(pcard?.contents);
+check(pcard?.type === 'flex' && ptxt.includes('แผน DCA'), `the tile answers with the DCA card: ${pcard?.text ?? pcard?.type}`);
+// NVDA is 9000/20000 = 45% of the portfolio: over the hard cap.
+check(ptxt.includes('เกิน 20%'), `the hard cap is flagged: ${ptxt}`);
+check(ptxt.includes('฿3,000') && ptxt.includes('เงินสำรอง ฿1,000'), 'budget from 08_DCA_PLAN');
+console.log('  เช็คพอร์ต →', ptxt.slice(0, 400));
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

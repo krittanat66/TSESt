@@ -262,7 +262,7 @@ A message that carries no number is a question, not spending:
 | `หุ้น` (หรือ `dca`, `พอร์ต`) | แผน DCA ผลตอบแทนตั้งแต่ซื้อ เหตุผล และข่าว |
 | `ข่าว` | เฉพาะข่าวและเหตุผลรายตัว |
 | `เช็คงบ` | การ์ดงบประมาณ พร้อมแถบว่าหมวดไหนใช้ไปเท่าไหร่ |
-| `เช็คพอร์ต` | การ์ดพอร์ต มูลค่า DCA และผลตอบแทนรายตัว |
+| `เช็คพอร์ต` | หุ้นที่ถือ คะแนน และแผนแบ่งเงิน DCA เดือนนี้ |
 | `ช่วย` | รายการคำสั่ง |
 
 The DCA answer reads 08_DCA_PLAN and 20_DCA_SCORE, including Buy Price,
@@ -403,6 +403,25 @@ than it looks: a bare `ขอ` would swallow `ขอสรุป`, and `เง�
 "โหมดพูดคุย" enters no mode. There is nothing to enter, because small talk is
 already answered whenever a message carries no money in it — and a mode that
 could be left on would be a way to lose an expense.
+
+### The DCA split (เช็คพอร์ต)
+
+The portfolio tile lists every US holding with its share of the portfolio,
+its return, this month's score, and what it gets from the DCA budget.
+`dca-plan.js` applies the owner's planner rules:
+
+- amount = score ÷ sum of scores × budget, in whole baht, summing to the
+  budget exactly (largest remainder);
+- nothing under Dime's ฿50 minimum — a low share is lifted and the rest
+  re-divided;
+- over 15% of the portfolio the score counts at half; over 20% the stock
+  gets only the minimum and a warning to trim back to 15-17%.
+
+The budget is 08_DCA_PLAN's US Stocks row (฿3,000 by default), with the
+reserve row shown beside it. Scores are read, never made up: they come from
+20_DCA_SCORE, and a holding without one is listed as unscored rather than
+given a number. Before a month's research is loaded, the latest month's
+scores are used and the card says so.
 
 ### Payday
 

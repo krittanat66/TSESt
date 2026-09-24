@@ -264,6 +264,14 @@ function buildDca(rows, monthKeyWanted) {
 // 20_DCA_SCORE records the monthly judgement call: how each holding scored,
 // what drove the score, and how the buy has done since. Scores come from
 // research, not arithmetic, so the sheet is the record and this only reads it.
+// The newest month that has scores at all. A new month has none until its
+// research is loaded, and the portfolio card would otherwise go blank on the
+// 1st; last month's scores, labelled as such, are the honest stand-in.
+function latestScoredMonth(rows) {
+  const months = rows.filter((r) => str(r.Ticker)).map((r) => monthKey(r.Month)).filter(Boolean);
+  return months.sort().at(-1) ?? null;
+}
+
 function buildDcaScores(rows, monthKeyWanted) {
   return rows
     .filter((r) => str(r.Ticker) && monthKey(r.Month) === monthKeyWanted)
@@ -444,7 +452,13 @@ export function mapSheetsToAppData(raw, requestedMonth) {
   const budget = buildBudget(rowsToObjects(raw.budget ?? []), key);
   const pvdFund = buildPvdFund(rowsToObjects(raw.pvd ?? []), key);
   monthly.pvdDeducted = pvdFund?.monthlyDeduction ?? monthly.pvd.employee;
-  const dcaScores = buildDcaScores(rowsToObjects(raw.dcaScore ?? []), key);
+  const scoreRows = rowsToObjects(raw.dcaScore ?? []);
+  const dcaScores = buildDcaScores(scoreRows, key);
+  const scoredMonth = dcaScores.length ? key : latestScoredMonth(scoreRows);
+  const dcaScoresLatest = {
+    month: scoredMonth,
+    scores: scoredMonth === key ? dcaScores : buildDcaScores(scoreRows, scoredMonth),
+  };
   const netWorthHistory = buildNetWorthHistory(rowsToObjects(raw.netWorth));
   const inbox = buildInbox(rowsToObjects(raw.inbox));
 
@@ -523,6 +537,7 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     investment,
     dca,
     dcaScores,
+    dcaScoresLatest,
     budget,
     pvdFund,
     netWorthHistory,

@@ -187,36 +187,181 @@ export function budgetCard(data) {
   );
 }
 
-/** เช็คพอร์ต — this month's DCA plan and how each holding has done. */
-export function portfolioCard(data) {
-  const { dca, dcaScores, dashboard, investment } = data;
-  const rows = [];
-  if (investment?.total) rows.push(row('มูลค่าพอร์ต', baht(investment.total)));
+const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const thaiMonth = (key) => {
+  const [y, m] = String(key ?? '').split('-').map(Number);
+  return y && m ? `${THAI_MONTHS[m - 1]} ${y + 543}` : '';
+};
 
-  for (const d of dca ?? []) {
-    rows.push(row(d.label, `${baht(d.actual)} / ${baht(d.plan)} · ${d.percentage}%`));
+// Score bands as the DCA rules use them: 7+ conviction, 4-6 steady middle,
+// 3 and under the deliberate low weight (SCHG/SCHD live here).
+function scoreChip(score) {
+  if (!Number.isFinite(score) || score <= 0) {
+    return { bg: '#F3F4F6', fg: '#9CA3AF', text: '—' };
+  }
+  if (score >= 7) return { bg: '#D1FAE5', fg: '#065F46', text: `${score}/10` };
+  if (score >= 4) return { bg: '#DBEAFE', fg: '#1E3A8A', text: `${score}/10` };
+  return { bg: '#FEF3C7', fg: '#92400E', text: `${score}/10` };
+}
+
+const pctText = (n) => (Number.isFinite(n) && n !== 0 ? `${n > 0 ? '▲' : '▼'}${Math.abs(n).toFixed(1)}%` : '');
+const pctColour = (n) => (n > 0 ? '#059669' : n < 0 ? '#DC2626' : '#9CA3AF');
+
+function holdingRow(r) {
+  const chip = scoreChip(r.score);
+  // Only what exists: LINE refuses a text component with nothing in it.
+  const sub = [
+    r.weight ? text(`${r.weight}% พอร์ต`, { size: 'xxs', color: '#9CA3AF', flex: 0 }) : null,
+    pctText(r.returnPct) ? text(pctText(r.returnPct), { size: 'xxs', color: pctColour(r.returnPct), flex: 0 }) : null,
+  ].filter(Boolean);
+  return {
+    type: 'box',
+    layout: 'horizontal',
+    spacing: 'sm',
+    paddingTop: '6px',
+    paddingBottom: '6px',
+    contents: [
+      {
+        type: 'box',
+        layout: 'vertical',
+        flex: 5,
+        contents: [
+          text(r.ticker, { size: 'sm', weight: 'bold', color: '#111827' }),
+          ...(sub.length ? [{ type: 'box', layout: 'baseline', spacing: 'sm', contents: sub }] : []),
+        ],
+      },
+      {
+        type: 'box',
+        layout: 'vertical',
+        flex: 3,
+        justifyContent: 'center',
+        contents: [
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: chip.bg,
+            cornerRadius: '10px',
+            paddingTop: '2px',
+            paddingBottom: '2px',
+            contents: [text(chip.text, { size: 'xs', weight: 'bold', color: chip.fg, align: 'center' })],
+          },
+        ],
+      },
+      text(r.amount ? baht(r.amount) : '—', {
+        size: 'sm',
+        weight: 'bold',
+        align: 'end',
+        gravity: 'center',
+        flex: 4,
+        color: r.amount ? '#111827' : '#9CA3AF',
+      }),
+    ],
+  };
+}
+
+function noteBox(lines, { bg, fg }) {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    margin: 'md',
+    paddingAll: '10px',
+    cornerRadius: '8px',
+    backgroundColor: bg,
+    spacing: 'xs',
+    contents: lines.map((l) => text(l, { size: 'xxs', color: fg })),
+  };
+}
+
+/**
+ * เช็คพอร์ต — every US holding, its score, and this month's split of the DCA
+ * budget, worked out by dca-plan.js from the owner's rules.
+ *
+ * `plan` is buildDcaPlan's result; `meta` says which month the scores are
+ * from, since on the 1st they are still last month's.
+ */
+export function portfolioCard(plan, { month, scoresMonth, reserve = 0 } = {}) {
+  const t = TONES.investment;
+  const stale = scoresMonth && month && scoresMonth !== month;
+
+  const body = [
+    text('งบ DCA เดือนนี้', { size: 'xs', color: '#8C8C8C' }),
+    text(baht(plan.budget), { size: 'xxl', weight: 'bold', color: t.accent }),
+  ];
+  if (reserve) body.push(text(`+ เงินสำรอง ${baht(reserve)} (ใช้ตามจังหวะ ไม่ผูกเวลา)`, { size: 'xxs', color: '#8C8C8C' }));
+  if (plan.portfolio) {
+    body.push({
+      type: 'box',
+      layout: 'baseline',
+      margin: 'md',
+      spacing: 'sm',
+      contents: [
+        text('พอร์ตหุ้นสหรัฐ', { size: 'xs', color: '#8C8C8C', flex: 0 }),
+        text(baht(plan.portfolio), { size: 'sm', weight: 'bold', color: '#111827', flex: 0 }),
+        ...(pctText(plan.portfolioReturn)
+          ? [text(pctText(plan.portfolioReturn), { size: 'xs', color: pctColour(plan.portfolioReturn), flex: 0 })]
+          : []),
+      ],
+    });
   }
 
-  const ranked = [...(dcaScores ?? [])].sort((a, b) => b.resultPct - a.resultPct);
-  for (const s of ranked.slice(0, 8)) {
-    const arrow = s.resultPct > 0 ? '▲' : s.resultPct < 0 ? '▼' : '▬';
-    rows.push(
-      row(`${arrow} ${s.ticker}`, `${s.resultPct > 0 ? '+' : ''}${s.resultPct}% · ${s.score}/10`, {
-        color: s.resultPct > 0 ? '#059669' : s.resultPct < 0 ? '#DC2626' : '#333333',
+  body.push({ type: 'separator', margin: 'lg' });
+  body.push({
+    type: 'box',
+    layout: 'horizontal',
+    margin: 'md',
+    spacing: 'sm',
+    contents: [
+      text('หุ้น', { size: 'xxs', color: '#9CA3AF', flex: 5 }),
+      text('คะแนน', { size: 'xxs', color: '#9CA3AF', flex: 3, align: 'center' }),
+      text('ลงเดือนนี้', { size: 'xxs', color: '#9CA3AF', flex: 4, align: 'end' }),
+    ],
+  });
+  if (plan.rows.length) {
+    body.push({ type: 'box', layout: 'vertical', contents: plan.rows.map(holdingRow) });
+  } else {
+    body.push(text('ยังไม่มีข้อมูลหุ้นในชีต 06_INVESTMENT / 20_DCA_SCORE', { size: 'xs', color: '#9CA3AF', margin: 'md' }));
+  }
+
+  body.push({ type: 'separator', margin: 'md' });
+  body.push({
+    type: 'box',
+    layout: 'baseline',
+    margin: 'md',
+    contents: [
+      text('รวม', { size: 'sm', color: '#8C8C8C', flex: 8 }),
+      text(baht(plan.allocated), { size: 'sm', weight: 'bold', align: 'end', flex: 4, color: '#111827' }),
+    ],
+  });
+
+  if (plan.warnings.length) body.push(noteBox(['⚠️ สัดส่วนเกินเพดาน', ...plan.warnings], { bg: '#FEE2E2', fg: '#991B1B' }));
+  if (plan.unscored.length) {
+    body.push(
+      noteBox([`ยังไม่มีคะแนน: ${plan.unscored.join(', ')}`, 'อัปเดตข่าวหุ้นประจำเดือนก่อน จึงจะแบ่งเงินให้ได้'], {
+        bg: '#FEF3C7',
+        fg: '#92400E',
       })
     );
   }
 
-  return message(
-    `พอร์ต ${dashboard.month}`,
-    bubble({
-      tone: 'investment',
-      title: `พอร์ตเดือนนี้ ${dashboard.month}`,
-      headline: baht(investment?.total ?? 0),
-      rows,
-      footnote: ranked.length ? '' : 'ยังไม่มีคะแนนของเดือนนี้ในชีต 20_DCA_SCORE',
-    })
-  );
+  const source = scoresMonth
+    ? `คะแนนจาก 20_DCA_SCORE ${thaiMonth(scoresMonth)}${stale ? ' (ยังไม่มีของเดือนนี้)' : ''}`
+    : 'ยังไม่มีคะแนนในชีต 20_DCA_SCORE';
+  body.push(text(`${source} · แบ่งตามคะแนน ขั้นต่ำ ฿50 · ไม่ใช่คำแนะนำการลงทุน`, {
+    size: 'xxs', color: '#AAAAAA', margin: 'lg',
+  }));
+
+  return message(`แผน DCA ${thaiMonth(month)} ${baht(plan.budget)}`, {
+    type: 'bubble',
+    size: 'mega',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: t.bar,
+      paddingAll: '16px',
+      contents: [text(`${t.mark}  พอร์ต & แผน DCA ${thaiMonth(month)}`, { color: '#FFFFFF', weight: 'bold' })],
+    },
+    body: { type: 'box', layout: 'vertical', paddingAll: '20px', contents: body },
+  });
 }
 
 const TYPE_TITLE = {

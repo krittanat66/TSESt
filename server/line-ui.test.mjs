@@ -9,6 +9,7 @@ import { matchCommand, commandReply, CARD_COMMANDS, SCAN_QUICK_REPLY } from './l
 import { moodOf, personaReply, PERSONA_RESPONSES } from './line-persona.js';
 import { buildInboxRows, buildImageEvents } from './line-webhook.js';
 import { slipCard, budgetCard, portfolioCard, toneFor } from './line-flex.js';
+import { buildDcaPlan } from './dca-plan.js';
 import { richMenu, TILES, tileBounds, menuSvg, MENU_WIDTH, MENU_HEIGHT } from './line-richmenu.js';
 import { slipToRow, pickModel, rankModels } from './line-vision.js';
 import { accountByNumber } from './line-buttons.js';
@@ -117,10 +118,33 @@ const b = budgetCard(data);
 check(b.type === 'flex' && JSON.stringify(b).includes('Food'), 'the budget card lists categories');
 const widths = [...JSON.stringify(b).matchAll(/"width":"(\d+)%"/g)].map((m) => Number(m[1]));
 check(widths.every((w) => w <= 100), `bars clamp at 100%: ${widths.join(',')}`);
-const pf = portfolioCard(data);
-check(JSON.stringify(pf).includes('NVDA'), 'the portfolio card lists holdings');
-// Losses must not be painted the colour of gains.
-check(JSON.stringify(pf).includes('#DC2626'), 'a holding that is down reads red');
+const plan = buildDcaPlan({
+  holdings: [{ asset: 'NVDA', value: 5000, returnPct: 51.3 }, { asset: 'AAPL', value: 5000, returnPct: -3 },
+    { asset: 'MSFT', value: 5000, returnPct: 4 }, { asset: 'AMPX', value: 5000, returnPct: 0 }],
+  scores: [{ ticker: 'NVDA', score: 8 }, { ticker: 'AAPL', score: 6 }, { ticker: 'MSFT', score: 2 }],
+  budget: 3000,
+});
+const pf = portfolioCard(plan, { month: '2026-10', scoresMonth: '2026-09', reserve: 1000 });
+const pfText = JSON.stringify(pf);
+check(pfText.includes('NVDA') && pfText.includes('AAPL'), 'the portfolio card lists holdings');
+check(pfText.includes('#DC2626'), 'a holding that is down reads red');
+check(pfText.includes('฿3,000') && pfText.includes('เงินสำรอง ฿1,000'), 'budget and reserve are shown');
+check(pfText.includes('ยังไม่มีของเดือนนี้'), "last month's scores are labelled as last month's");
+check(pfText.includes('ยังไม่มีคะแนน: AMPX'), 'an unscored holding is called out');
+check(pfText.includes('8/10') && pfText.includes('#D1FAE5'), 'a high score gets the green chip');
+
+// LINE refuses a whole message over one blank text component, so no card
+// may carry one — checked across every card the bot sends.
+const blanks = (node, path = '') => {
+  if (!node || typeof node !== 'object') return [];
+  const here = node.type === 'text' && !String(node.text ?? '').trim() ? [path] : [];
+  return here.concat(...Object.entries(node).map(([k, v]) => blanks(v, `${path}.${k}`)));
+};
+const slipSample = slipCard({ transactionType: 'Expense', amount: 120, category: 'Food', inboxId: 'INBOX-0009' });
+for (const [name, c] of Object.entries({ pf, budget: b, slip: slipSample, emptyPlan: portfolioCard(buildDcaPlan({}), {}) })) {
+  const found = blanks(c);
+  check(!found.length, `${name} card has blank text at ${found.join(', ')}`);
+}
 
 // --- slips ----------------------------------------------------------------
 check(buildImageEvents([
