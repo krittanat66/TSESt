@@ -3,34 +3,13 @@ import { WealthProvider, useWealth } from './data/WealthContext';
 import { BottomNavigation } from './components/Navigation';
 import { PasscodeGate } from './components/PasscodeGate';
 import { ScreenBoundary } from './components/ScreenBoundary';
+import { RefreshPill, PullToRefresh, UpdateBanner } from './components/Refresh';
 import { HomeScreen } from './screens/HomeScreen';
 import { MonthlyScreen } from './screens/MonthlyScreen';
 import { AccountsScreen } from './screens/AccountsScreen';
 import { InvestmentScreen } from './screens/InvestmentScreen';
 import { WealthScreen } from './screens/WealthScreen';
 import { MoreScreen } from './screens/MoreScreen';
-
-function DataSourceBadge() {
-  const { loading, refreshing, isLive, error, refresh } = useWealth();
-
-  if (loading) return null;
-
-  return (
-    <button
-      onClick={refresh}
-      disabled={refreshing}
-      title={error ? `Sheet unreachable: ${error}` : 'Tap to refresh from Google Sheets'}
-      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}
-      className={`fixed right-3 z-50 text-[10px] px-2 py-1 rounded-full border ${
-        isLive
-          ? 'border-emerald/50 text-emerald bg-emerald/10'
-          : 'border-warning/50 text-warning bg-warning/10'
-      }`}
-    >
-      {refreshing ? '↻ กำลังอัปเดต…' : isLive ? '● Live sheet' : '● Mock data'}
-    </button>
-  );
-}
 
 function AppShell() {
   const { locked, loading } = useWealth();
@@ -65,7 +44,9 @@ function AppShell() {
 
   return (
     <div className="bg-bg-primary min-h-screen text-white font-sans">
-      <DataSourceBadge />
+      <RefreshPill />
+      <PullToRefresh />
+      <UpdateBanner />
 
       {/* Mobile viewport */}
       <div className="max-w-md mx-auto bg-bg-primary relative">

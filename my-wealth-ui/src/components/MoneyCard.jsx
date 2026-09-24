@@ -90,7 +90,8 @@ export function ProgressBar({
   plan,
   color = 'cyan'
 }) {
-  const percentage = (actual / plan) * 100;
+  // No plan means no percentage to show — 0/0 would print "NaN%".
+  const percentage = plan > 0 ? (Number(actual) / plan) * 100 || 0 : 0;
   const colorClasses = {
     cyan: 'bg-gradient-to-r from-cyan to-emerald',
     emerald: 'bg-emerald',

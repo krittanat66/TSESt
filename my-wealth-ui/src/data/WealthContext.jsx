@@ -103,17 +103,54 @@ export function WealthProvider({ children }) {
     }
   }, []);
 
+  // A refresh the owner asked for. The server keeps each read for a minute,
+  // so without clearing that first a refresh inside the minute returns the
+  // very figures already on screen and looks like it did nothing.
+  const refresh = useCallback(async () => {
+    const code = readPasscode();
+    try {
+      await fetch(`${API_URL}/refresh`, {
+        method: 'POST',
+        headers: code ? { Authorization: `Bearer ${code}` } : {},
+      });
+    } catch {
+      /* the read below still runs; at worst it returns the cached figures */
+    }
+    return load();
+  }, [load]);
+
+  // A deploy the open app has not picked up. Installed to the home screen
+  // the app has no reload button, so without this a new version only
+  // arrives when the app is force-quit.
+  const [updateReady, setUpdateReady] = useState(false);
+  const checkVersion = useCallback(async () => {
+    if (__APP_COMMIT__ === 'local') return;
+    try {
+      const res = await fetch(`${API_URL}/health`, { cache: 'no-store' });
+      const { commit } = await res.json();
+      if (commit && commit !== 'local' && commit !== __APP_COMMIT__) setUpdateReady(true);
+    } catch {
+      /* offline or asleep: ask again next time */
+    }
+  }, []);
+
+  useEffect(() => {
+    checkVersion();
+  }, [checkVersion]);
+
   // Back from LINE after booking there: re-read, so balances on screen
-  // include it. Throttled — switching apps is frequent.
+  // include it, and check for a new version while at it. Throttled —
+  // switching apps is frequent.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || !hasData.current) return;
       if (Date.now() - lastLoad.current < 20_000) return;
-      load();
+      refresh();
+      checkVersion();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [load]);
+  }, [refresh, checkVersion]);
 
   useEffect(() => {
     if (readPasscode()) load();
@@ -150,10 +187,14 @@ export function WealthProvider({ children }) {
       isLive,
       locked,
       unlock: (code) => load(code),
-      refresh: () => load(),
+      refresh,
+      updateReady,
+      // A full reload: the network-first service worker then serves the new
+      // build's index.html and its fresh asset hashes.
+      reloadApp: () => window.location.reload(),
       installLineMenu,
     }),
-    [data, refreshing, fetchedAt, loading, error, isLive, locked, load, installLineMenu]
+    [data, refreshing, fetchedAt, loading, error, isLive, locked, load, refresh, updateReady, installLineMenu]
   );
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>;

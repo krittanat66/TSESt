@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings, PieChart, FileText, AlertCircle, Lock, MessageCircle } from 'lucide-react';
+import { MessageCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import { Header } from '../components/Navigation';
 import { useWealth } from '../data/WealthContext';
 
@@ -56,19 +56,67 @@ function LineMenuButton() {
   );
 }
 
+/**
+ * Two kinds of refresh, because they fix different things: new figures from
+ * the sheet, or a new version of the app itself after a deploy. The second
+ * matters on a phone — installed to the home screen, the app has no reload
+ * button of its own.
+ */
+function DataAndApp() {
+  const { refresh, refreshing, fetchedAt, error, isLive, updateReady, reloadApp } = useWealth();
+  const when = fetchedAt
+    ? fetchedAt.toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : null;
+
+  return (
+    <div className="bg-bg-card rounded-lg border border-border-soft divide-y divide-border-soft">
+      <div className="p-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-white font-semibold">รีเฟรชข้อมูล</p>
+          <p className={`text-xs mt-0.5 ${error && isLive ? 'text-warning' : 'text-text-tertiary'}`}>
+            {error && isLive
+              ? 'อัปเดตครั้งล่าสุดไม่สำเร็จ — ยังแสดงข้อมูลเดิม'
+              : when
+                ? `ดึงจากชีตล่าสุด ${when} น.`
+                : 'ยังไม่ได้เชื่อมกับชีต'}
+          </p>
+        </div>
+        <button
+          type="button"
+          id="refresh-data"
+          onClick={refresh}
+          disabled={refreshing}
+          className="shrink-0 flex items-center gap-1.5 text-cyan text-sm font-semibold px-3 py-2 rounded-lg bg-cyan/10 disabled:opacity-60"
+        >
+          <RefreshCw size={16} className={refreshing ? 'animate-spin motion-reduce:animate-none' : ''} />
+          {refreshing ? 'กำลังอัปเดต…' : 'รีเฟรช'}
+        </button>
+      </div>
+      <div className="p-4 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-white font-semibold">โหลดแอปใหม่</p>
+          <p className={`text-xs mt-0.5 ${updateReady ? 'text-cyan' : 'text-text-tertiary'}`}>
+            {updateReady ? 'มีเวอร์ชันใหม่ — กดเพื่ออัปเดต' : `เวอร์ชัน ${__APP_COMMIT__}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          id="reload-app-more"
+          onClick={reloadApp}
+          className="shrink-0 flex items-center gap-1.5 text-text-secondary text-sm font-semibold px-3 py-2 rounded-lg bg-bg-elevated"
+        >
+          <RotateCcw size={16} />
+          โหลดใหม่
+        </button>
+      </div>
+      <p className="px-4 py-3 text-text-tertiary text-xs">
+        ดึงหน้าจอลงจากด้านบนเพื่อรีเฟรชได้ทุกหน้า
+      </p>
+    </div>
+  );
+}
+
 export function MoreScreen() {
-  const { fetchedAt } = useWealth();
-
-  // Not built yet. Shown as such rather than as buttons: a row that looks
-  // tappable and does nothing reads as the app having frozen.
-  const comingSoon = [
-    { icon: PieChart, label: 'PVD', color: 'text-purple' },
-    { icon: FileText, label: 'Budget', color: 'text-blue' },
-    { icon: AlertCircle, label: 'Tax', color: 'text-warning' },
-    { icon: Lock, label: 'Private Assets', color: 'text-text-secondary' },
-    { icon: Settings, label: 'Settings', color: 'text-blue' },
-  ];
-
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
       <Header title="More" subtitle="Settings and tools" />
@@ -80,33 +128,15 @@ export function MoreScreen() {
           <LineMenuButton />
         </div>
 
-        {/* Not built yet */}
+        {/* Data and app */}
         <div>
-          <h2 className="text-white font-bold text-lg mb-3">เร็วๆ นี้</h2>
-          <ul className="bg-bg-card rounded-lg border border-border-soft divide-y divide-border-soft">
-            {comingSoon.map(({ icon: Icon, label, color }) => (
-              <li key={label} className="flex items-center justify-between p-4 opacity-60">
-                <div className="flex items-center gap-3">
-                  <Icon size={20} className={color} />
-                  <span className="text-white text-sm font-semibold">{label}</span>
-                </div>
-                <span className="text-text-tertiary text-xs">ยังไม่เปิดใช้</span>
-              </li>
-            ))}
-          </ul>
+          <h2 className="text-white font-bold text-lg mb-3">ข้อมูลและแอป</h2>
+          <DataAndApp />
         </div>
 
-        {/* App Info */}
-        <div className="pt-6 border-t border-border-soft">
-          <p className="text-text-tertiary text-xs text-center">
-            MY WEALTH v0.1.0 • Personal Wealth Management
-          </p>
-          <p className="text-text-tertiary text-xs text-center mt-2">
-            {fetchedAt
-              ? `อัปเดตจากชีตล่าสุด ${fetchedAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`
-              : 'ยังไม่ได้เชื่อมกับชีต'}
-          </p>
-        </div>
+        <p className="text-text-tertiary text-xs text-center pt-2">
+          MY WEALTH v0.1.0 • Personal Wealth Management
+        </p>
       </div>
     </div>
   );

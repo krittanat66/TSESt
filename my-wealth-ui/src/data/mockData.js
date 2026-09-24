@@ -270,7 +270,11 @@ export const formatCurrency = (value, currency = 'THB') => {
   return `${symbol}${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 };
 
+// A blank or missing figure shows a dash rather than throwing: one empty cell
+// in the sheet used to take the whole Home screen down with it.
 export const formatPercent = (value) => {
-  const sign = value >= 0 ? '+' : '';
-  return `${sign}${value.toFixed(1)}%`;
+  const n = Number(value);
+  if (value == null || !Number.isFinite(n)) return '—';
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${n.toFixed(1)}%`;
 };
