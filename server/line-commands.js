@@ -15,6 +15,7 @@ const COMMANDS = [
   ['budget', ['เช็คงบ', 'เช็คงบค่าใช้จ่าย', 'งบ']],
   ['portfolio', ['เช็คพอร์ต', 'เช็คพอร์ตเดือนนี้']],
   ['chat', ['เข้าสู่โหมดพูดคุย']],
+  ['scan', ['สแกนสลิป', 'สแกน', 'สลิป']],
   ['news', ['ข่าว', 'news']],
   ['dca', ['dca', 'หุ้น', 'ลงทุน', 'พอร์ต']],
   ['summary', ['สรุป', 'เงิน', 'ยอด', 'คงเหลือ', 'summary']],
@@ -141,6 +142,15 @@ const HELP = [
 // it is prose, like the news.
 export const CARD_COMMANDS = new Set(['budget', 'portfolio']);
 
+// The only way to open the camera from the chat: LINE permits camera and
+// camera-roll actions in quick replies and nowhere else.
+export const SCAN_QUICK_REPLY = {
+  items: [
+    { type: 'action', action: { type: 'cameraRoll', label: '🖼 เลือกจากอัลบั้ม' } },
+    { type: 'action', action: { type: 'camera', label: '📷 ถ่ายรูป' } },
+  ],
+};
+
 export function commandReply(name, data) {
   if (name === 'help') return HELP;
   if (name === 'news') return newsReply(data);
@@ -151,6 +161,7 @@ export function commandReply(name, data) {
   // because the bot already answers small talk whenever a message carries no
   // money in it.
   if (name === 'chat') return personaReply('สวัสดี');
+  if (name === 'scan') return 'ส่งรูปสลิปมาได้เลย 📸\nถ่ายใหม่ หรือเลือกจากอัลบั้มด้านล่าง';
   return HELP;
 }
 

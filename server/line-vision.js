@@ -17,9 +17,30 @@ const GEMINI_API = process.env.GEMINI_API_BASE || 'https://generativelanguage.go
 // the ones below are tried in order, and if every one is gone the API is
 // asked which models this key can use. Whichever works is remembered for
 // the life of the process.
-const MODEL_CANDIDATES = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash'].filter(
-  Boolean
-);
+//
+// A model can also be up but overloaded (503 "high demand"). That is not a
+// reason to give up on the slip: the lite models are served separately and
+// read a slip's printed figures just as well, so they are the fallback.
+const MODEL_CANDIDATES = [
+  ...new Set(
+    [
+      process.env.GEMINI_MODEL,
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-flash-lite-latest',
+      'gemini-2.5-flash-lite',
+    ].filter(Boolean)
+  ),
+];
+
+// Overloaded, rate-limited, or a server hiccup: worth another go, here or on
+// another model. Anything else (bad key, bad request) is the same everywhere.
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+// LINE's reply token lasts about a minute and the slip still has to be
+// written to the sheet after it is read, so the reading gets this much.
+const READ_BUDGET_MS = Number(process.env.GEMINI_BUDGET_MS || 35_000);
+const RETRY_PAUSE_MS = Number(process.env.GEMINI_RETRY_MS || 1_500);
 let workingModel = null;
 
 // A phone photo of a slip is well under this. The cap is here so a malformed
@@ -109,24 +130,28 @@ function geminiUrl(model, action, key) {
 async function geminiError(res) {
   const body = await res.json().catch(() => ({}));
   const why = body?.error?.message ? ` — ${body.error.message}` : '';
-  return new Error(`Gemini responded ${res.status}${why}`.slice(0, 300));
+  const err = new Error(`Gemini responded ${res.status}${why}`.slice(0, 300));
+  // Lets the caller say "try again in a moment" instead of "retake the
+  // photo" — a sharper picture does nothing for a busy server.
+  err.retryLater = RETRYABLE.has(res.status);
+  return err;
 }
 
 /**
- * The newest flash model this key can call. Only used once every name in
- * MODEL_CANDIDATES has come back 404.
+ * Flash models this key can call, best first. Asked only when the known
+ * names are all retired or all busy.
  */
-export async function discoverModel(key) {
+export async function discoverModels(key) {
   const res = await fetch(`${GEMINI_API}/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`);
   if (!res.ok) throw await geminiError(res);
   const { models = [] } = await res.json();
-  return pickModel(models);
+  return rankModels(models);
 }
 
 // Plain flash models that read images: not the image-generating, speech or
 // live variants, and a stable name before an experiment. Newest version
 // first, since an old name is the one about to be retired.
-export function pickModel(models) {
+export function rankModels(models) {
   const version = (name) => Number((name.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
   const usable = models
     .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
@@ -136,9 +161,16 @@ export function pickModel(models) {
     const unstable = (n) => (/exp|preview/.test(n) ? 1 : 0);
     return unstable(a) - unstable(b) || version(b) - version(a) || /lite/.test(a) - /lite/.test(b);
   });
-  if (!usable.length) throw new Error('ไม่พบโมเดล Gemini ที่อ่านรูปได้สำหรับคีย์นี้');
-  return usable[0];
+  return usable;
 }
+
+export function pickModel(models) {
+  const [best] = rankModels(models);
+  if (!best) throw new Error('ไม่พบโมเดล Gemini ที่อ่านรูปได้สำหรับคีย์นี้');
+  return best;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function generate(model, key, request) {
   return fetch(geminiUrl(model, 'generateContent', key), {
@@ -172,25 +204,53 @@ export async function readSlip({ buffer, mimeType }) {
     generationConfig: { temperature: 0, responseMimeType: 'application/json' },
   };
 
-  let res = null;
-  const tried = workingModel ? [workingModel] : MODEL_CANDIDATES;
-  for (const model of tried) {
-    res = await generate(model, key, request);
-    if (res.status !== 404) {
-      if (res.ok) workingModel = model;
-      break;
+  const deadline = Date.now() + READ_BUDGET_MS;
+  const tried = new Set();
+  let lastError = null;
+
+  // One pass over a list of models: each gets a second try if it was only
+  // busy, then the next one is asked. Stops at the first reading.
+  async function attempt(models) {
+    for (const model of models) {
+      if (tried.has(model)) continue;
+      tried.add(model);
+      for (let round = 0; round < 2; round += 1) {
+        if (Date.now() > deadline) return null;
+        const res = await generate(model, key, request);
+        if (res.ok) {
+          workingModel = model;
+          return res;
+        }
+        if (res.status === 404) {
+          console.error(`gemini: model ${model} not found, trying the next`);
+          if (workingModel === model) workingModel = null;
+          break;
+        }
+        lastError = await geminiError(res);
+        if (!lastError.retryLater) throw lastError; // bad key or request: same on every model
+        console.error(`gemini: ${model} busy (${res.status}), ${round ? 'moving on' : 'retrying'}`);
+        if (!round) await sleep(RETRY_PAUSE_MS);
+      }
     }
-    console.error(`gemini: model ${model} not found, trying the next`);
+    return null;
   }
-  if (res.status === 404) {
-    // Every known name is retired (or the remembered one just was): ask.
-    workingModel = null;
-    const model = await discoverModel(key);
-    console.log(`gemini: using discovered model ${model}`);
-    res = await generate(model, key, request);
-    if (res.ok) workingModel = model;
+
+  const first = workingModel ? [workingModel, ...MODEL_CANDIDATES] : MODEL_CANDIDATES;
+  let res = await attempt(first);
+  if (!res && Date.now() < deadline) {
+    // Every known name is retired or busy: ask what else this key can use.
+    const others = (await discoverModels(key)).filter((m) => !tried.has(m)).slice(0, 3);
+    if (others.length) console.log(`gemini: trying discovered ${others.join(', ')}`);
+    res = await attempt(others);
   }
-  if (!res.ok) throw await geminiError(res);
+  if (!res) {
+    if (lastError?.retryLater) {
+      const busy = new Error('Gemini มีคนใช้เยอะชั่วคราว');
+      busy.retryLater = true;
+      throw busy;
+    }
+    throw lastError ?? new Error('ไม่พบโมเดล Gemini ที่อ่านรูปได้สำหรับคีย์นี้');
+  }
 
   const body = await res.json();
   const textPart = body?.candidates?.[0]?.content?.parts?.find((p) => typeof p.text === 'string');

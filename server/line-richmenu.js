@@ -18,9 +18,11 @@ export const TILES = [
     title: 'สแกนสลิปด่วน',
     subtitle: 'ถ่ายรูป / เลือกจากอัลบั้ม',
     tone: RED,
-    // Opens the camera roll directly. A postback here would cost a round trip
-    // just to say "now send me the picture".
-    action: { type: 'cameraRoll', label: 'สแกนสลิป' },
+    // Not a cameraRoll action: LINE allows camera and camera-roll actions only
+    // in quick-reply buttons, and a rich menu carrying one is refused whole —
+    // which is why the first install never showed. The tile sends a word
+    // instead, and the answer carries the camera and album as quick replies.
+    action: { type: 'message', label: 'สแกนสลิป', text: 'สแกนสลิป' },
   },
   {
     glyph: 'chat',
@@ -63,7 +65,8 @@ export function richMenu() {
     size: { width: MENU_WIDTH, height: MENU_HEIGHT },
     selected: true,
     name: 'MY WEALTH',
-    chatBarText: 'เมนู MY WEALTH',
+    // LINE caps this at 14 characters.
+    chatBarText: 'MY WEALTH',
     areas: TILES.map((t, i) => ({ bounds: tileBounds(i), action: t.action })),
   };
 }

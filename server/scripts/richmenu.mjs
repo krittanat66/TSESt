@@ -1,6 +1,7 @@
 // Builds the rich menu artwork and installs it on the LINE channel.
 //
-//   node scripts/richmenu.mjs build     — writes assets/richmenu.png only
+//   node scripts/richmenu.mjs build     — writes assets/richmenu.png only;
+//                                         commit it, the server uploads it
 //   node scripts/richmenu.mjs install   — builds, uploads, sets as default
 //
 // Run once, and again whenever the tiles in line-richmenu.js change. It is a
@@ -12,7 +13,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 import sharp from 'sharp';
-import { menuSvg, richMenu } from '../line-richmenu.js';
+import { menuSvg } from '../line-richmenu.js';
+import { installRichMenu } from '../line-richmenu-install.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ASSETS = resolve(HERE, '../assets');
@@ -65,50 +67,11 @@ async function build() {
   return PNG;
 }
 
-function lineHeaders() {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) throw new Error('ยังไม่ได้ตั้ง LINE_CHANNEL_ACCESS_TOKEN');
-  return { Authorization: `Bearer ${token}` };
-}
-
-async function lineJson(path, method, body) {
-  const res = await fetch(`https://api.line.me${path}`, {
-    method,
-    headers: { ...lineHeaders(), 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`LINE ${path} → ${res.status} ${text}`);
-  return text ? JSON.parse(text) : {};
-}
-
-// A channel may hold only so many menus, and re-running this would otherwise
-// leave the old ones behind until the limit is hit.
-async function removeOld() {
-  const { richmenus = [] } = await lineJson('/v2/bot/richmenu/list', 'GET');
-  for (const m of richmenus) {
-    await lineJson(`/v2/bot/richmenu/${m.richMenuId}`, 'DELETE');
-    console.log(`ลบเมนูเก่า ${m.richMenuId}`);
-  }
-}
-
 async function install() {
-  await build();
-  await removeOld();
-
-  const { richMenuId } = await lineJson('/v2/bot/richmenu', 'POST', richMenu());
-  console.log(`สร้างเมนู ${richMenuId}`);
-
-  const png = await readFile(PNG);
-  const up = await fetch(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
-    method: 'POST',
-    headers: { ...lineHeaders(), 'Content-Type': 'image/png' },
-    body: png,
-  });
-  if (!up.ok) throw new Error(`อัปโหลดรูปไม่สำเร็จ ${up.status} ${await up.text()}`);
-
-  await lineJson(`/v2/bot/user/all/richmenu/${richMenuId}`, 'POST');
-  console.log('ตั้งเป็นเมนูหลักเรียบร้อย — เปิดแชทใหม่เพื่อเห็นเมนู');
+  const png = await readFile(await build());
+  const { richMenuId, removed } = await installRichMenu(png);
+  if (removed.length) console.log(`ลบเมนูเก่า ${removed.join(', ')}`);
+  console.log(`ตั้งเมนู ${richMenuId} เป็นเมนูหลักแล้ว — ปิดแล้วเปิดแชทใหม่เพื่อเห็นเมนู`);
 }
 
 const cmd = process.argv[2] ?? 'build';

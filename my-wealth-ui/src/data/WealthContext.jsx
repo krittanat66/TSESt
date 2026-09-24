@@ -118,6 +118,23 @@ export function WealthProvider({ children }) {
     [load]
   );
 
+  // Puts the 2×2 menu under the LINE chat. A server job rather than a script,
+  // because the phone is the only place this app is run from.
+  const installLineMenu = useCallback(async () => {
+    const code = readPasscode();
+    try {
+      const res = await fetch(`${API_URL}/line/richmenu`, {
+        method: 'POST',
+        headers: code ? { Authorization: `Bearer ${code}` } : {},
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: body.error || `Server responded ${res.status}` };
+      return { ok: true, richMenuId: body.richMenuId };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }, []);
+
   const value = useMemo(
     () => ({
       data,
@@ -128,8 +145,9 @@ export function WealthProvider({ children }) {
       unlock: (code) => load(code),
       refresh: () => load(),
       reviewInbox,
+      installLineMenu,
     }),
-    [data, loading, error, isLive, locked, load, reviewInbox]
+    [data, loading, error, isLive, locked, load, reviewInbox, installLineMenu]
   );
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>;

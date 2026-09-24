@@ -281,17 +281,28 @@ without typing:
 
 | | |
 | --- | --- |
-| 📸 สแกนสลิปด่วน (แดง) — opens the camera roll | 💬 โหมดพูดคุย (น้ำเงิน) |
+| 📸 สแกนสลิปด่วน (แดง) — replies with 📷 / 🖼 buttons | 💬 โหมดพูดคุย (น้ำเงิน) |
 | 📊 เช็คงบค่าใช้จ่าย (น้ำเงิน) | 📈 เช็คพอร์ตเดือนนี้ (แดง) |
 
 LINE draws nothing here: the image *is* the menu, and the tap targets are
 invisible rectangles laid over it. Both come from the one `TILES` list in
 `line-richmenu.js`, so they cannot drift apart and send a tap to the wrong
-card. Install it with:
+card.
+
+The scan tile sends "สแกนสลิป" rather than opening the camera itself: LINE
+allows camera and camera-roll actions only in quick replies, and refuses a
+whole rich menu that carries one. The reply carries 📷 ถ่ายรูป and
+🖼 เลือกจากอัลบั้ม.
+
+Install it from the app: **More ▸ LINE Bot ▸ ติดตั้งเมนู LINE**
+(`POST /api/line/richmenu`, app passcode). The menu is checked with LINE's
+validate endpoint before anything is touched, and the old menu is removed
+only once the new one is live. `assets/richmenu.png` is committed, so the
+server needs no image library to do this. After changing the tiles:
 
 ```bash
-npm run richmenu     # builds the artwork, uploads it, sets it as default
-node scripts/richmenu.mjs build   # artwork only, into assets/richmenu.png
+node scripts/richmenu.mjs build     # redraw assets/richmenu.png, then commit it
+npm run richmenu                    # or install straight from a terminal
 ```
 
 The script downloads Noto Sans Thai on first run and points fontconfig at it,
@@ -362,6 +373,14 @@ amount and chosen accounts ride in the postback data, so drawing the card
 after a tap never has to read the sheet back. The slip's own
 date is carried into the row rather than the date the photo was sent — a slip
 photographed three days later belongs in the month it was paid.
+
+Models come and go, and a live one can be overloaded ("503 high demand").
+The bot tries `GEMINI_MODEL` if set, then `gemini-flash-latest`,
+`gemini-2.5-flash` and the two lite models; a busy one gets one more try, a
+retired one is skipped, and if none answers it asks the API which flash
+models the key can use. All of it fits in 35 seconds, inside LINE's reply
+window. If every model is busy the reply says so and carries a
+**🔄 อ่านสลิปอีกครั้ง** button that reads the same photo again — no resend.
 
 Set `GEMINI_API_KEY` to turn this on ([aistudio.google.com/apikey][k]). It is
 a different key from `GOOGLE_API_KEY`, which only reads the sheet. Without

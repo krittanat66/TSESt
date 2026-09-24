@@ -5,12 +5,12 @@
 // money in it never reaches the persona. Everything else here is cosmetic;
 // that one decides whether the bot still records anything.
 
-import { matchCommand, commandReply, CARD_COMMANDS } from './line-commands.js';
+import { matchCommand, commandReply, CARD_COMMANDS, SCAN_QUICK_REPLY } from './line-commands.js';
 import { moodOf, personaReply, PERSONA_RESPONSES } from './line-persona.js';
 import { buildInboxRows, buildImageEvents } from './line-webhook.js';
 import { slipCard, budgetCard, portfolioCard, toneFor } from './line-flex.js';
 import { richMenu, TILES, tileBounds, menuSvg, MENU_WIDTH, MENU_HEIGHT } from './line-richmenu.js';
-import { slipToRow, pickModel } from './line-vision.js';
+import { slipToRow, pickModel, rankModels } from './line-vision.js';
 import { accountByNumber } from './line-buttons.js';
 
 const fail = [];
@@ -63,8 +63,18 @@ for (let i = 0; i < 4; i += 1) {
   seen.add(`${b.x},${b.y}`);
 }
 check(seen.size === 4, 'no two tiles sit in the same place');
-// The tile that opens the camera is what makes slip-sending one tap.
-check(TILES.some((t) => t.action.type === 'cameraRoll'), 'one tile opens the camera roll');
+// LINE refuses a whole rich menu if any area carries a camera or camera-roll
+// action — those are quick-reply only. This used to assert the opposite,
+// which is why the first menu never appeared.
+const ALLOWED_IN_MENU = new Set(['message', 'postback', 'uri', 'datetimepicker', 'richmenuswitch']);
+for (const a of menu.areas) {
+  check(ALLOWED_IN_MENU.has(a.action.type), `rich menu area uses ${a.action.type}, which LINE refuses`);
+}
+check([...menu.chatBarText].length <= 14, `chat bar text within 14: ${menu.chatBarText}`);
+// The scan tile reaches the camera through a quick reply instead.
+check(matchCommand('สแกนสลิป') === 'scan', 'the scan tile is a command');
+check(SCAN_QUICK_REPLY.items.map((i) => i.action.type).sort().join() === 'camera,cameraRoll',
+  'scanning offers the camera and the album');
 for (const t of TILES) {
   if (t.action.type !== 'message') continue;
   check(matchCommand(t.action.text) !== null, `the menu text "${t.action.text}" reaches a command`);
@@ -146,6 +156,8 @@ check(pickModel(listed('gemini-4.0-flash-preview', 'gemini-3.0-flash')) === 'gem
   'a stable name beats a preview');
 check(pickModel(listed('gemini-3.0-flash-image', 'gemini-3.0-flash-tts', 'gemini-2.5-flash')) === 'gemini-2.5-flash',
   'image-making and speech models cannot read a slip');
+check(rankModels(listed('gemini-2.5-flash-lite', 'gemini-3.0-flash', 'gemini-3.0-flash-lite')).join() ===
+  'gemini-3.0-flash,gemini-3.0-flash-lite,gemini-2.5-flash-lite', 'fallbacks are ranked too, lite after full');
 let threw = false;
 try { pickModel(listed('gemini-3.0-pro')); } catch { threw = true; }
 check(threw, 'no flash model is an error, not a guess');

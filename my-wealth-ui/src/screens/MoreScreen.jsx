@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, ChevronRight, Inbox, Settings, PieChart, FileText, AlertCircle, Lock, X } from 'lucide-react';
+import { Check, ChevronRight, Inbox, Settings, PieChart, FileText, AlertCircle, Lock, MessageCircle, X } from 'lucide-react';
 import { Header } from '../components/Navigation';
 import { useWealth } from '../data/WealthContext';
 
@@ -161,6 +161,50 @@ function InboxRow({ item, accounts }) {
   );
 }
 
+// Installs the LINE rich menu. Says what happened in words, because the
+// result is visible only in another app and a silent button would leave the
+// owner guessing whether it ran.
+function LineMenuButton() {
+  const { installLineMenu } = useWealth();
+  const [state, setState] = useState({ busy: false, message: '', ok: null });
+
+  const run = async () => {
+    setState({ busy: true, message: '', ok: null });
+    const result = await installLineMenu();
+    setState({
+      busy: false,
+      ok: result.ok,
+      message: result.ok
+        ? 'ติดตั้งแล้ว — ปิดแชท LOUIS\' BOT แล้วเปิดใหม่เพื่อเห็นเมนู'
+        : `ติดตั้งไม่สำเร็จ — ${result.error}`,
+    });
+  };
+
+  return (
+    <div className="bg-bg-card rounded-lg p-4 border border-border-soft">
+      <button
+        id="install-line-menu"
+        type="button"
+        onClick={run}
+        disabled={state.busy}
+        className="w-full flex items-center justify-between disabled:opacity-60"
+      >
+        <div className="flex items-center gap-3">
+          <MessageCircle size={24} className="text-emerald" />
+          <div className="text-left">
+            <span className="text-white font-semibold block">ติดตั้งเมนู LINE</span>
+            <span className="text-text-tertiary text-xs">สแกนสลิป · พูดคุย · เช็คงบ · เช็คพอร์ต</span>
+          </div>
+        </div>
+        <span className="text-cyan text-sm font-semibold">{state.busy ? 'กำลังติดตั้ง…' : 'ติดตั้ง'}</span>
+      </button>
+      {state.message && (
+        <p className={`text-xs mt-3 ${state.ok ? 'text-emerald' : 'text-coral'}`}>{state.message}</p>
+      )}
+    </div>
+  );
+}
+
 export function MoreScreen() {
   const { data } = useWealth();
   const inboxItems = data.inbox;
@@ -228,6 +272,12 @@ export function MoreScreen() {
               );
             })}
           </div>
+        </div>
+
+        {/* LINE bot */}
+        <div>
+          <h2 className="text-white font-bold text-lg mb-3">LINE Bot</h2>
+          <LineMenuButton />
         </div>
 
         {/* Settings */}

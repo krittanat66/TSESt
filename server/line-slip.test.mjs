@@ -20,12 +20,30 @@ const sent = [];
 const appsCalls = [];
 const modelsTried = [];
 let modelListCalls = 0;
+// How many more calls the one live model answers "high demand" to.
+let busyLeft = 0;
+// The rich menu side of LINE.
+const menuCalls = [];
+let existingMenus = [];
+let menuInvalid = false;
 
 const stub = createServer((req, res) => {
   let b = '';
   req.on('data', (c) => (b += c));
   req.on('end', () => {
     res.setHeader('content-type', 'application/json');
+    if (req.url.startsWith('/v2/bot/richmenu') || req.url.startsWith('/v2/bot/user/all/richmenu')) {
+      menuCalls.push(`${req.method} ${req.url}`);
+      if (req.url === '/v2/bot/richmenu/validate') {
+        if (!menuInvalid) return res.end('{}');
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ message: 'The request body has 1 error(s)',
+          details: [{ property: 'areas[0].action.type', message: 'invalid' }] }));
+      }
+      if (req.url === '/v2/bot/richmenu/list') return res.end(JSON.stringify({ richmenus: existingMenus }));
+      if (req.url === '/v2/bot/richmenu' && req.method === 'POST') return res.end(JSON.stringify({ richMenuId: 'rm-new' }));
+      return res.end('{}');
+    }
     if (req.url.includes('/content')) {
       res.setHeader('content-type', 'image/jpeg');
       return res.end(Buffer.from('jpg'));
@@ -44,6 +62,11 @@ const stub = createServer((req, res) => {
     if (req.url.includes('generateContent')) {
       const model = req.url.match(/models\/([^:]+):/)[1];
       modelsTried.push(model);
+      if (model === 'gemini-3.0-flash' && busyLeft > 0) {
+        busyLeft -= 1;
+        res.statusCode = 503;
+        return res.end(JSON.stringify({ error: { code: 503, message: 'This model is currently experiencing high demand.' } }));
+      }
       if (model !== 'gemini-3.0-flash') {
         res.statusCode = 404;
         return res.end(JSON.stringify({ error: { code: 404, message: `models/${model} is not found for API version v1beta` } }));
@@ -92,6 +115,7 @@ Object.assign(process.env, {
   GEMINI_API_KEY: 'g', GEMINI_API_BASE: base,
   APPS_SCRIPT_URL: `${base}/apps`, APPS_SCRIPT_TOKEN: 't',
   APP_PASSCODE: '123456', PORT: String(PORT), SPREADSHEET_ID: 'x',
+  GEMINI_RETRY_MS: '5',
 });
 await import('./index.js');
 await new Promise((r) => setTimeout(r, 300));
@@ -210,6 +234,55 @@ check(ask2?.text?.includes('เข้าบัญชีไหน'), 'a transfer 
 [card] = await tap(ask2.quickReply.items[0].action.data);
 check(card?.type === 'flex' && texts(card.contents).includes('฿900'), 'the last pick shows the card');
 check(buttons(card.contents).length === 3, 'with its confirm button');
+
+// --- 4. The model is busy (the second real failure) ----------------------
+// Once: the same model is asked again and the slip goes through.
+reading = { kind: 'Expense', amount: 168, currency: 'THB', fromAccountNumber: '0690', confidence: 0.9 };
+busyLeft = 1; modelsTried.length = 0;
+[card] = await photo();
+check(card?.type === 'flex', `one busy answer is retried through: ${card?.text ?? card?.type}`);
+check(modelsTried.join() === 'gemini-3.0-flash,gemini-3.0-flash', `retried on the same model: ${modelsTried}`);
+
+// Busy throughout: say so, and offer to read the same photo again.
+busyLeft = 1000; modelsTried.length = 0;
+const [busy] = await photo();
+check(busy?.text?.includes('มีคนใช้เยอะ'), `busy is said plainly: ${busy?.text}`);
+check(!busy?.text?.includes('ถ่ายใหม่'), 'a busy server is not blamed on the photo');
+const again2 = busy?.quickReply?.items?.[0]?.action;
+check(again2?.data === 'rs|m', `a re-read button for the same photo: ${again2?.data}`);
+check(modelsTried.length > 2, `other models were tried first: ${modelsTried}`);
+console.log('  busy →', busy?.text?.split('\n').join(' / '));
+
+// The server recovers; the button reads the original photo, nothing re-sent.
+busyLeft = 0;
+[card] = await tap(again2.data);
+check(card?.type === 'flex' && texts(card.contents).includes('฿168'), 'the re-read produces the card');
+
+// --- 5. Installing the rich menu from the app ----------------------------
+const install = (code = '123456') => fetch(`http://127.0.0.1:${PORT}/api/line/richmenu`, {
+  method: 'POST', headers: { Authorization: `Bearer ${code}` },
+}).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+check((await install('wrong')).status === 401, 'installing needs the passcode');
+
+existingMenus = [{ richMenuId: 'rm-old' }];
+menuCalls.length = 0;
+let inst = await install();
+check(inst.status === 200 && inst.body.richMenuId === 'rm-new', `installed: ${JSON.stringify(inst.body)}`);
+const order = menuCalls.map((c) => c.replace(/^\w+ /, ''));
+check(order[0] === '/v2/bot/richmenu/validate', 'checked with LINE before anything else');
+check(order.includes('/v2/bot/richmenu/rm-new/content'), 'the artwork was uploaded');
+check(order.includes('/v2/bot/user/all/richmenu/rm-new'), 'set as the default for everyone');
+// The old menu goes only once the new one is live — never a moment with none.
+check(order.indexOf('/v2/bot/richmenu/rm-old') > order.indexOf('/v2/bot/user/all/richmenu/rm-new'),
+  `old menu removed after the new one is live: ${order.join(' → ')}`);
+
+// A menu LINE would refuse must not take the working one down with it.
+menuInvalid = true; menuCalls.length = 0;
+inst = await install();
+check(inst.status === 502 && inst.body.error.includes('areas[0].action.type'), `LINE's reason is passed on: ${inst.body.error}`);
+check(!menuCalls.some((c) => c.startsWith('DELETE')), 'a refused menu deletes nothing');
+menuInvalid = false;
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

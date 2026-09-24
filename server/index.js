@@ -20,16 +20,18 @@ import {
   needsTwoAccounts,
   orderAccounts,
   SLIP_STEPS,
+  encode,
   encodeSlip,
   decodeSlip,
   slipAccountButtons,
   accountByNumber,
 } from './line-buttons.js';
 import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
-import { commandReply, dcaDigest } from './line-commands.js';
+import { commandReply, dcaDigest, SCAN_QUICK_REPLY } from './line-commands.js';
 import { personaReply } from './line-persona.js';
 import { slipCard, confirmCard, budgetCard, portfolioCard } from './line-flex.js';
 import { visionConfigured, fetchLineImage, readSlip, slipToRow } from './line-vision.js';
+import { installRichMenu } from './line-richmenu-install.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -177,7 +179,9 @@ app.post('/api/line-webhook', async (req, res) => {
 
   // A tap on an account button finishes a row that is already saved.
   for (const tap of buildPostbacks(events)) {
-    work.push(SLIP_STEPS.has(tap.step) ? handleSlipTap(tap) : handleAccountTap(tap));
+    // rs|messageId: read a slip photo again after a failed read.
+    if (tap.step === 'rs') work.push(handleSlip({ messageId: tap.inboxId, replyToken: tap.replyToken }));
+    else work.push(SLIP_STEPS.has(tap.step) ? handleSlipTap(tap) : handleAccountTap(tap));
   }
   // A photo takes a round trip through a vision model, so it runs alongside
   // the text rather than behind it.
@@ -290,17 +294,27 @@ async function handleTextRows(rows) {
     replies.push(pendingReply(r, inboxId, pickable));
   });
 
-  if (commands.length) {
+  // Two commands need nothing from the sheet, and must not fail with it: the
+  // camera button is how a slip gets sent at all, sheet or no sheet.
+  const local = commands.filter((c) => c.command === 'scan' || c.command === 'chat');
+  const sheetCommands = commands.filter((c) => !local.includes(c));
+  for (const c of local) {
+    replies.push(
+      replyToLine(c.replyToken, commandReply(c.command, {}), c.command === 'scan' ? SCAN_QUICK_REPLY : null)
+    );
+  }
+
+  if (sheetCommands.length) {
     try {
       const data = await getWealthData();
-      for (const c of commands) {
+      for (const c of sheetCommands) {
         const card =
           c.command === 'budget' ? budgetCard(data) : c.command === 'portfolio' ? portfolioCard(data) : null;
         replies.push(replyToLine(c.replyToken, card ?? commandReply(c.command, data)));
       }
     } catch (err) {
       console.error('line-webhook: read failed', err.message);
-      for (const c of commands) {
+      for (const c of sheetCommands) {
         replies.push(replyToLine(c.replyToken, 'อ่านข้อมูลจากชีตไม่ได้ ลองใหม่อีกครั้ง'));
       }
     }
@@ -332,7 +346,27 @@ async function handleSlip({ messageId, replyToken, receivedAt }) {
     row = slipToRow(slip, { receivedAt });
   } catch (err) {
     console.error('line-webhook: slip read failed', err.message);
-    return replyToLine(replyToken, `อ่านสลิปไม่สำเร็จ — ${err.message}\nลองถ่ายใหม่ให้ชัดขึ้น หรือพิมพ์ยอดมาแทน`);
+    // LINE keeps the photo for a while, so a busy model is answered with a
+    // button that reads the same picture again — sending the slip twice is
+    // exactly the chore the bot exists to remove. The advice differs too: a
+    // sharper photo does nothing for a busy server.
+    const retry = {
+      items: [
+        {
+          type: 'action',
+          action: {
+            type: 'postback',
+            label: '🔄 อ่านสลิปอีกครั้ง',
+            data: encode('rs', messageId),
+            displayText: 'อ่านสลิปอีกครั้ง',
+          },
+        },
+      ],
+    };
+    const advice = err.retryLater
+      ? 'รอสักครู่แล้วกดปุ่มด้านล่าง ไม่ต้องส่งรูปใหม่'
+      : 'ลองถ่ายใหม่ให้ชัดขึ้น หรือพิมพ์ยอดมาแทน เช่น "ข้าว 120"';
+    return replyToLine(replyToken, `อ่านสลิปไม่สำเร็จ — ${err.message}\n${advice}`, retry);
   }
 
   let pickable = [];
@@ -560,6 +594,23 @@ app.post('/api/inbox/review', requirePasscode, async (req, res) => {
     return res.json({ ok: true, ...result });
   } catch (err) {
     return res.status(502).json({ error: err.message });
+  }
+});
+
+/**
+ * Installs the LINE rich menu from the committed artwork.
+ *
+ * A route rather than only a script, so it runs from a button in the app —
+ * the owner has no terminal open on the server. The PNG is committed and
+ * read here, so the server needs no image library and no Thai font.
+ */
+app.post('/api/line/richmenu', requirePasscode, async (_req, res) => {
+  try {
+    const png = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'assets/richmenu.png'));
+    res.json({ ok: true, ...(await installRichMenu(png)) });
+  } catch (err) {
+    console.error('[richmenu] install failed:', err.message);
+    res.status(502).json({ ok: false, error: err.message });
   }
 });
 
