@@ -375,8 +375,7 @@ const prevMonthKey = (key) => {
  * Daily Expenses and Cat are not spent out of a bar that drains — they are
  * amounts moved into the ใช้จ่ายรายวัน account at the start of the month, so
  * the question each month is a yes or no. Yes if it was ticked by hand, or
- * if transfers into that account that month add up to cover it; the budgets
- * are covered in sheet order, so a single ฿9,000 transfer ticks both.
+ * if a single transfer into that account that month covers it.
  */
 export function buildBudgetTransfers(budgetRows, txRows, dailyAccount, key) {
   return [key, prevMonthKey(key)].map((month) => {
@@ -389,26 +388,36 @@ export function buildBudgetTransfers(budgetRows, txRows, dailyAccount, key) {
       }))
       .filter((i) => i.budget > 0);
 
-    const received = dailyAccount
-      ? money(
-          txRows
-            .filter(
-              (t) =>
-                str(t.Type) === 'Transfer' &&
-                str(t['Destination Account']) === dailyAccount &&
-                monthKey(t.Date) === month
-            )
-            .reduce((s, t) => s + (num(t['THB Equivalent']) || num(t.Amount)), 0)
-        )
-      : 0;
+    const transfers = dailyAccount
+      ? txRows
+          .filter(
+            (t) =>
+              str(t.Type) === 'Transfer' &&
+              str(t['Destination Account']) === dailyAccount &&
+              monthKey(t.Date) === month
+          )
+          .map((t) => num(t['THB Equivalent']) || num(t.Amount))
+      : [];
 
-    let covered = 0;
+    // A budget is ticked by a transfer that covers it on its own — ฿7,000 for
+    // Daily Expenses, ฿2,000 for Cat, ฿9,000 for both. Small top-ups are not
+    // added together: four ฿500 moves are topping up, not the month's
+    // budget, and summing them once showed a month as done that was not.
+    const ticked = new Set();
+    for (const amount of transfers) {
+      let left = amount;
+      items.forEach((it, idx) => {
+        if (ticked.has(idx) || it.marked || left < it.budget) return;
+        ticked.add(idx);
+        left -= it.budget;
+      });
+    }
+
     return {
       month,
-      received,
-      items: items.map((i) => {
-        covered += i.budget;
-        const auto = received >= covered;
+      received: money(transfers.reduce((s, a) => s + a, 0)),
+      items: items.map((i, idx) => {
+        const auto = ticked.has(idx);
         return { ...i, done: i.marked || auto, how: i.marked ? 'marked' : auto ? 'transfer' : null };
       }),
     };

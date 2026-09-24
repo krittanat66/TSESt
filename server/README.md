@@ -411,9 +411,10 @@ this card; they are amounts moved into the ใช้จ่ายรายวั�
 start. So the card asks one thing per budget, for this month and last:
 has it been moved? ✅ or ❌, no bars.
 
-A budget is ✅ when 10_BUDGET column J ("Transferred") is filled, or when
-transfers into the spending account that month cover it — in sheet order,
-so one ฿9,000 transfer ticks both. A ❌ comes with a "✓ โอน…แล้ว" button,
+A budget is ✅ when 10_BUDGET column J ("Transferred") is filled, or when a
+single transfer into the spending account that month covers it — ฿7,000
+ticks Daily Expenses, ฿2,000 Cat, ฿9,000 both. Top-ups are never added
+together: sixteen ฿500 moves are topping up, not the month's budget. A ❌ comes with a "✓ โอน…แล้ว" button,
 for a transfer made in the bank app and never recorded; it writes today's
 date into J (`budget-mark` in Code.gs). New month rows copy B..I only, so a
 tick never carries into the next month.

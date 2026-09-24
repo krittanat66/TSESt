@@ -36,5 +36,16 @@ check(o.items[0].done && !o.items[1].done, '฿7,000 ticks Daily Expenses, not C
 ], 'SCB Daily Living Account', '2026-10');
 check(o.items.every((i) => !i.done) && o.received === 0, `only transfers into the spending account this month count: ${o.received}`);
 
+// Small top-ups are not the month's budget, however many there are.
+[o] = buildBudgetTransfers(budget, Array.from({ length: 16 }, (_, i) => into(2026, 10, i + 1, 500)), 'SCB Daily Living Account', '2026-10');
+check(o.items.every((i) => !i.done), `sixteen ฿500 top-ups tick nothing: ${o.items.map((i) => i.done)}`);
+check(o.received === 8000, 'but they are still shown as received');
+// A ฿2,000 transfer is Cat's, even with Daily Expenses still open.
+[o] = buildBudgetTransfers(budget, [into(2026, 10, 3, 2000)], 'SCB Daily Living Account', '2026-10');
+check(!o.items[0].done && o.items[1].done, 'a ฿2,000 transfer ticks Cat only');
+// Nothing at all in October: both open.
+[o] = buildBudgetTransfers(budget, [], 'SCB Daily Living Account', '2026-10');
+check(o.items.every((i) => !i.done && i.how === null), 'October with no transfer and no tick is ❌ on both');
+
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);
