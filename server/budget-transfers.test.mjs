@@ -47,5 +47,14 @@ check(!o.items[0].done && o.items[1].done, 'a ฿2,000 transfer ticks Cat only')
 [o] = buildBudgetTransfers(budget, [], 'SCB Daily Living Account', '2026-10');
 check(o.items.every((i) => !i.done && i.how === null), 'October with no transfer and no tick is ❌ on both');
 
+// Before tracking began (October 2026) there are no transfer records to go
+// by; those months were moved by hand and must not show a ❌.
+const aug = [row(2026, 8, 'Daily Expenses', 7000), row(2026, 8, 'Cat', 2000)];
+const [s1, a1] = buildBudgetTransfers([...budget.map((r) => ({ ...r, Transferred: '' })), ...aug], [], 'SCB Daily Living Account', '2026-09');
+check(s1.items.every((i) => i.done && i.how === 'settled'), `September, before tracking, is done: ${JSON.stringify(s1.items)}`);
+check(a1.items.every((i) => i.done), 'so is August');
+const [o2] = buildBudgetTransfers(budget, [], 'SCB Daily Living Account', '2026-10');
+check(o2.items.every((i) => !i.done), 'October onward is judged by the record');
+
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

@@ -185,9 +185,11 @@ function transferLine(item) {
         layout: 'vertical',
         flex: 5,
         contents: [
-          text(`${item.category} · ${budgetName(item.category)}`, { size: 'sm', weight: 'bold', color: '#111827' }),
+          // The Thai name leads; the sheet's English name is a small second
+          // line. Both on one line wrapped mid-word on a phone.
+          text(budgetName(item.category), { size: 'sm', weight: 'bold', color: '#111827' }),
           text(
-            item.how === 'transfer' ? 'โอนแล้ว (จากรายการโอน)' : item.how === 'marked' ? 'โอนแล้ว' : 'ยังไม่โอน',
+            `${item.category} · ${item.how === 'transfer' ? 'โอนแล้ว (จากรายการโอน)' : item.done ? 'โอนแล้ว' : 'ยังไม่โอน'}`,
             { size: 'xxs', color: item.done ? '#059669' : '#DC2626' }
           ),
         ],

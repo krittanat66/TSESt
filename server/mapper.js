@@ -377,8 +377,15 @@ const prevMonthKey = (key) => {
  * the question each month is a yes or no. Yes if it was ticked by hand, or
  * if a single transfer into that account that month covers it.
  */
+// Months before the bot began recording transfers into the spending account.
+// They have no records to be judged by, and the owner moved those budgets by
+// hand, so they are shown as done rather than as a false ❌ that no button
+// can clear until Code.gs is redeployed.
+const TRACKING_START = () => process.env.BUDGET_TRACKING_START || '2026-10';
+
 export function buildBudgetTransfers(budgetRows, txRows, dailyAccount, key) {
   return [key, prevMonthKey(key)].map((month) => {
+    const settled = month < TRACKING_START();
     const items = budgetRows
       .filter((r) => monthKey(r.Month) === month && str(r.Category) && !OFF_WALLET.test(str(r.Category)))
       .map((r) => ({
@@ -418,7 +425,8 @@ export function buildBudgetTransfers(budgetRows, txRows, dailyAccount, key) {
       received: money(transfers.reduce((s, a) => s + a, 0)),
       items: items.map((i, idx) => {
         const auto = ticked.has(idx);
-        return { ...i, done: i.marked || auto, how: i.marked ? 'marked' : auto ? 'transfer' : null };
+        const how = i.marked ? 'marked' : auto ? 'transfer' : settled ? 'settled' : null;
+        return { ...i, done: Boolean(how), how };
       }),
     };
   });
