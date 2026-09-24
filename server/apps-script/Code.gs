@@ -331,6 +331,17 @@ function confirmInbox(inboxId, sourceAccount, destAccount) {
     }
   }
   var txId = 'TX-' + ('00000' + nextNum).slice(-5);
+
+  // 03_ACCOUNTS adds what lands in an account as Destination and subtracts
+  // what leaves it as Source. Income has one account and it is where the
+  // money arrived, so it belongs in Destination — booked as Source, a salary
+  // of 18,945 would take 18,945 off the account it was paid into.
+  var fromAccount = String(sourceAccount || v[10] || '');
+  var toAccount = String(destAccount || '');
+  if (type === 'Income' && !toAccount) {
+    toAccount = fromAccount;
+    fromAccount = '';
+  }
   var when = v[9] instanceof Date ? v[9] : new Date();
   var currency = String(v[8] || 'THB').trim();
 
@@ -343,8 +354,8 @@ function confirmInbox(inboxId, sourceAccount, destAccount) {
     // The reviewer picks the accounts a chat message cannot name. Without
     // them the row books fine but no balance can move, because nothing says
     // which account the money left or reached.
-    String(sourceAccount || v[10] || ''),
-    String(destAccount || ''),
+    fromAccount,
+    toAccount,
     amount,
     currency,
     currency === 'THB' ? 1 : '',
@@ -371,8 +382,8 @@ function confirmInbox(inboxId, sourceAccount, destAccount) {
     amount: amount,
     currency: currency,
     category: String(v[11] || ''),
-    source: String(sourceAccount || v[10] || ''),
-    destination: String(destAccount || ''),
+    source: fromAccount,
+    destination: toAccount,
   };
 }
 
@@ -663,6 +674,39 @@ function installDcaNotifyTrigger() {
   });
   ScriptApp.newTrigger('notifyDcaOnLine').timeBased().onMonthDay(1).atHour(9).create();
   Logger.log('ตั้งเวลาแล้ว: เตือน DCA ทาง LINE ทุกวันที่ 1 ประมาณ 9:00');
+}
+
+/**
+ * Asks the server whether today is payday, and if so it messages LINE.
+ *
+ * Runs every morning rather than on a fixed date: payday is the last weekday
+ * of the month (the Friday before, when the month ends on a weekend), which
+ * no single monthly trigger can hit. The server holds the rule, so it is
+ * tested in one place and this stays a doorbell.
+ */
+function notifyPayday() {
+  var props = PropertiesService.getScriptProperties();
+  var base = props.getProperty('APP_URL');
+  var passcode = props.getProperty('APP_PASSCODE');
+  if (!base || !passcode) {
+    throw new Error('Set the Script Properties APP_URL and APP_PASSCODE first.');
+  }
+  var res = UrlFetchApp.fetch(base.replace(/\/+$/, '') + '/api/payday-notify', {
+    method: 'post',
+    headers: { Authorization: 'Bearer ' + passcode },
+    muteHttpExceptions: true,
+  });
+  Logger.log('notifyPayday: ' + res.getResponseCode() + ' ' + res.getContentText());
+  return res.getResponseCode();
+}
+
+/** Checks for payday every morning around 9:00. Run once to install. */
+function installPaydayTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'notifyPayday') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('notifyPayday').timeBased().everyDays(1).atHour(9).create();
+  Logger.log('ตั้งเวลาแล้ว: เช็กวันเงินเดือนเข้าทุกเช้า ประมาณ 9:00');
 }
 
 function installKeepAwakeTrigger() {

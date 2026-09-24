@@ -89,7 +89,7 @@ const stub = createServer((req, res) => {
         // A script deployed before balances existed answers with the TX id
         // alone; the bot has to cope with both.
         if (oldScript) return res.end(JSON.stringify({ ok: true, txId: 'TX-00300' }));
-        return res.end(JSON.stringify({ ok: true, txId: 'TX-00300', type: lastType, amount: lastAmount, currency: 'THB', category: lastType === 'Expense' ? 'Food' : 'Transfer',
+        return res.end(JSON.stringify({ ok: true, txId: 'TX-00300', type: lastType, amount: lastAmount, currency: 'THB', category: { Expense: 'Food', Income: 'Salary' }[lastType] ?? 'Transfer',
           balances: [p.sourceAccount, p.destAccount].filter(Boolean).map((name, i) => ({ name, balance: i ? 9500 : 300, currency: 'THB' })) }));
       }
       if (p.kind === 'inbox-reject') {
@@ -109,10 +109,11 @@ const fixture = join(mkdtempSync(join(tmpdir(), 'mw-')), 'wealth.json');
 writeFileSync(fixture, JSON.stringify({
   accounts: [
     { name: 'SCB Daily Living Account', accountNumber: '4080200690', status: 'Active', balance: 312, currency: 'THB' },
-    { name: 'SCB Salary Account', accountNumber: '0202890162', status: 'Active' },
+    { name: 'SCB Salary Account', accountNumber: '0202890162', status: 'Active', purpose: 'รับเงินเดือน', balance: 1000, currency: 'THB' },
     { name: 'SCB Emergency Reserve Account', accountNumber: '4616870114', status: 'Active' },
   ],
   dashboard: { month: 'ก.ย. 2026', cash: { dailyAccount: 'SCB Daily Living Account' } },
+  monthly: { income: { plan: 21745 }, pvdDeducted: 2841.75 },
 }));
 
 const PORT = Number(process.env.TEST_SLIP_PORT || 3992);
@@ -329,6 +330,37 @@ const pick2 = typed2.quickReply.items.find((i) => i.action.label.startsWith('SCB
 const [old] = await tap(pick2.action.data);
 check(old?.text?.includes('เหลือ ฿312'), `falls back to the sheet's balance: ${old?.text}`);
 oldScript = false;
+
+// --- 7. Salary --------------------------------------------------------------
+// The actual figure, typed after it lands. It must go INTO the salary
+// account: the ledger adds Destination and subtracts Source, so income
+// booked as Source would take the salary off the balance.
+confirmed.clear(); appsCalls.length = 0;
+lastType = 'Income'; lastAmount = 18103.25;
+const [sal] = await deliver({ type: 'message', message: { type: 'text', text: 'เงินเดือน 18,103.25' }, replyToken: 'r' });
+const salaryBtn = sal?.quickReply?.items?.[0]?.action;
+check(salaryBtn?.label.startsWith('SCB Salary'), `the salary account is offered first: ${salaryBtn?.label}`);
+check(salaryBtn?.data.startsWith('i|'), `an income step: ${salaryBtn?.data}`);
+check(JSON.stringify(sal).includes('เข้าบัญชี'), 'the pending card says where it goes in');
+[done] = await tap(salaryBtn.data);
+const booking = appsCalls.find((c) => c.kind === 'inbox-confirm');
+check(booking?.destAccount === 'SCB Salary Account' && !booking?.sourceAccount,
+  `income booked into the account, not out of it: from=${booking?.sourceAccount} to=${booking?.destAccount}`);
+bt = balanceTexts(done);
+check(bt.includes('จาก') && bt.includes('เงินเดือน') && bt.includes('เข้าบัญชี'), `reads as salary → account: ${bt}`);
+check(bt.includes('฿18,103.25'), `the actual amount: ${bt}`);
+console.log('  salary ✅ →', bt);
+
+// --- 8. The payday reminder ---------------------------------------------
+const notify = (q = '') => fetch(`http://127.0.0.1:${PORT}/api/payday-notify${q}`, {
+  method: 'POST', headers: { Authorization: 'Bearer 123456' },
+}).then((r) => r.json());
+sent.length = 0;
+const forced = await notify('?force=1');
+const push = sent.find((x) => x.messages && !x.replyToken);
+check(forced.sent === true && Boolean(push), `forced reminder broadcast: ${JSON.stringify(forced)}`);
+check(push?.messages?.[0]?.text?.includes('฿17,303.25 – ฿18,903.25'), `the range: ${push?.messages?.[0]?.text}`);
+console.log('  payday →', push?.messages?.[0]?.text?.split('\n').join(' / '));
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

@@ -32,6 +32,7 @@ import { personaReply } from './line-persona.js';
 import { slipCard, confirmCard, budgetCard, portfolioCard } from './line-flex.js';
 import { visionConfigured, fetchLineImage, readSlip, slipToRow } from './line-vision.js';
 import { installRichMenu } from './line-richmenu-install.js';
+import { isPayday, nextPayday, thaiDate, paydayMessage } from './payday.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -211,6 +212,13 @@ function attachAccounts(entries, data) {
     const destination = accountByNumber(data.accounts, to);
     if (source) r.account = source;
     else if (r.transactionType === 'Expense' && daily) r.account = daily;
+    else if (r.transactionType === 'Income' && r.category === 'Salary') {
+      // The salary is paid into one account, so that is the first button.
+      const paidInto = data.accounts.find(
+        (a) => a.status === 'Active' && (/เงินเดือน/.test(a.purpose ?? '') || /salary/i.test(a.name))
+      );
+      if (paidInto) r.account = paidInto.name;
+    }
     // The other end of a transfer; the reviewer still confirms it, but it
     // arrives filled in.
     if (destination && destination !== r.account) r.destinationAccount = destination;
@@ -237,11 +245,11 @@ function pendingReply(row, inboxId, pickable) {
     );
   }
   const two = needsTwoAccounts(row.transactionType);
-  return replyToLine(
-    row.replyToken,
-    card,
-    accountButtons(two ? 'a' : 'e', inboxId, orderAccounts(pickable, row.account))
-  );
+  // 'i' books the one account as where income arrived; 'e' as where spending
+  // left. Mixing them up is the difference between a balance going up by the
+  // salary and going down by it.
+  const step = two ? 'a' : row.transactionType === 'Income' ? 'i' : 'e';
+  return replyToLine(row.replyToken, card, accountButtons(step, inboxId, orderAccounts(pickable, row.account)));
 }
 
 async function handleTextRows(rows) {
@@ -454,6 +462,31 @@ async function balancesAfter(result, names) {
 }
 
 /**
+ * Salary-day reminder. Apps Script calls this every morning (Render's free
+ * plan sleeps, so it cannot keep its own clock); on any day but payday it
+ * answers and sends nothing. `?force=1` sends regardless, to try it out.
+ */
+app.post('/api/payday-notify', requirePasscode, async (req, res) => {
+  const now = new Date();
+  if (!isPayday(now) && req.query.force !== '1') {
+    return res.json({ ok: true, sent: false, next: thaiDate(nextPayday(now)) });
+  }
+  try {
+    let data = {};
+    try {
+      data = await getWealthData();
+    } catch (err) {
+      // The day is what matters; the estimate is a courtesy.
+      console.error('[payday] sheet read failed:', err.message);
+    }
+    await broadcastToLine(paydayMessage(data, now));
+    return res.json({ ok: true, sent: true });
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
+});
+
+/**
  * One tap on an account button.
  *
  * Spending needs one account and the row can be booked on the first tap. A
@@ -474,9 +507,9 @@ async function handleAccountTap({ step, inboxId, answers, replyToken }) {
       );
     }
 
-    const source = first;
-    const destination = step === 'b' ? second : '';
-    if (!source) return replyToLine(replyToken, 'ไม่ทราบว่าเลือกบัญชีไหน ลองใหม่อีกครั้ง');
+    if (!first) return replyToLine(replyToken, 'ไม่ทราบว่าเลือกบัญชีไหน ลองใหม่อีกครั้ง');
+    const source = step === 'i' ? '' : first;
+    const destination = step === 'b' ? second : step === 'i' ? first : '';
 
     const result = await reviewInboxRow(inboxId, 'confirm', { source, destination });
     cache.clear();
@@ -496,7 +529,7 @@ async function handleAccountTap({ step, inboxId, answers, replyToken }) {
       };
       return replyToLine(replyToken, confirmCard(entry, { done: true, txId: result.txId ?? '', balances }));
     }
-    const where = destination ? `${source} → ${destination}` : source;
+    const where = [source, destination].filter(Boolean).join(' → ');
     const left = balances.map((b) => `${b.name} เหลือ ฿${Number(b.balance).toLocaleString('th-TH')}`);
     return replyToLine(replyToken, [`ลงบัญชีแล้ว ${where}`, result.txId ?? '', ...left].filter(Boolean).join('\n'));
   } catch (err) {

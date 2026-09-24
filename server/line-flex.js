@@ -140,7 +140,8 @@ export function slipCard(entry, { pending = true } = {}) {
   if (entry.category) rows.push(row('หมวด', entry.category));
   if (entry.merchant) rows.push(row('ร้าน/ผู้รับ', entry.merchant));
   if (entry.date) rows.push(row('วันที่', entry.date));
-  if (entry.account) rows.push(row('จากบัญชี', entry.account));
+  // Income has one account and it is where the money arrived.
+  if (entry.account) rows.push(row(toneFor(entry.transactionType) === 'income' ? 'เข้าบัญชี' : 'จากบัญชี', entry.account));
   if (entry.destinationAccount) rows.push(row('เข้าบัญชี', entry.destinationAccount));
   if (entry.inboxId) rows.push(row('เลขที่', entry.inboxId));
 
@@ -322,6 +323,17 @@ export function confirmCard(entry, { actions = null, done = false, txId = '', ba
     (tone === 'expense' ? entry.category || 'ค่าใช้จ่าย' : '—');
   const destinationIsAccount = Boolean(entry.destinationAccount);
 
+  // Income runs the other way: it comes from outside (the employer, a
+  // dividend) into one of your accounts, so the account is the arrow's end.
+  const income = tone === 'income';
+  const fromLabel = income ? 'จาก' : 'จากบัญชี';
+  const fromValue = income
+    ? { Salary: 'เงินเดือน', Bonus: 'โบนัส', Interest: 'ดอกเบี้ย', Dividend: 'ปันผล' }[entry.category] ||
+      entry.category ||
+      'รายรับ'
+    : entry.account || 'ยังไม่ได้เลือก';
+  const toValue = income ? entry.destinationAccount || entry.account || 'ยังไม่ได้เลือก' : destination;
+
   const details = [entry.merchant && entry.destinationAccount ? entry.merchant : '', entry.date]
     .filter(Boolean)
     .join(' · ');
@@ -338,11 +350,11 @@ export function confirmCard(entry, { actions = null, done = false, txId = '', ba
       backgroundColor: '#F7F7F8',
       cornerRadius: '10px',
       contents: [
-        endpoint('จากบัญชี', entry.account || 'ยังไม่ได้เลือก', t.accent, !entry.account),
+        endpoint(fromLabel, fromValue, t.accent, !income && !entry.account),
         text('↓', { size: 'lg', color: t.accent, margin: 'xs', offsetStart: '1px' }),
         endpoint(
-          destinationIsAccount ? 'เข้าบัญชี' : tone === 'investment' ? 'ซื้อ' : 'จ่ายให้',
-          destination,
+          income || destinationIsAccount ? 'เข้าบัญชี' : tone === 'investment' ? 'ซื้อ' : 'จ่ายให้',
+          toValue,
           t.accent
         ),
       ],

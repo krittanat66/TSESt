@@ -404,6 +404,36 @@ than it looks: a bare `ขอ` would swallow `ขอสรุป`, and `เง�
 already answered whenever a message carries no money in it — and a mode that
 could be left on would be a way to lose an expense.
 
+### Payday
+
+The salary lands on the last weekday of the month — the 31st if that is a
+weekday, otherwise the Friday before. Thai public holidays are not
+modelled. `payday.js` holds the rule and is tested on its own.
+
+On payday morning the bot broadcasts a reminder with the expected range:
+
+```
+💰 วันนี้เงินเดือนเข้า — วันศุกร์ที่ 30 ต.ค. 2569
+คาดว่าเข้า ฿17,303.25 – ฿18,903.25
+(฿21,745 − PVD ฿2,841.75 − ค่าที่จอดรถ 0–฿1,600)
+```
+
+It is a range, never a booking: parking (up to `PARKING_MAX`, default 1600,
+by the days actually parked) comes off before the money reaches the bank.
+The owner replies with the real figure — `เงินเดือน 18,103.25` — and that
+is what gets recorded, with the salary account offered first.
+
+Income goes into the **Destination** column. 03_ACCOUNTS adds Destination
+and subtracts Source, so income booked as Source takes the salary *off* the
+account it was paid into. Code.gs moves a lone income account to
+Destination whichever way a caller sends it, and `apps-script.test.mjs` runs
+the real Code.gs against an in-memory sheet to hold that in place.
+
+Scheduling is Apps Script's, as with the DCA reminder: run
+`installPaydayTrigger` once. It calls `POST /api/payday-notify` every
+morning around 9:00 and the server sends only on payday
+(`?force=1` sends regardless, to try it).
+
 ### New month rows
 
 A month with no row in 02_MONTHLY and 10_BUDGET has nowhere to land: the
