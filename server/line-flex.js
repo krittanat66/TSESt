@@ -217,3 +217,154 @@ export function portfolioCard(data) {
     })
   );
 }
+
+const TYPE_TITLE = {
+  expense: 'รายจ่าย',
+  investment: 'การลงทุน',
+  transfer: 'โยกย้ายเงิน',
+  income: 'รายรับ',
+};
+
+// One end of the movement: a small label over the account name, with a dot
+// in the tone's colour so "from" and "to" read as two stops on one line.
+function endpoint(label, name, colour, muted = false) {
+  return {
+    type: 'box',
+    layout: 'horizontal',
+    spacing: 'md',
+    contents: [
+      {
+        type: 'box',
+        layout: 'vertical',
+        width: '12px',
+        height: '12px',
+        cornerRadius: '6px',
+        backgroundColor: muted ? '#CCCCCC' : colour,
+        offsetTop: '6px',
+        contents: [],
+      },
+      {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          text(label, { size: 'xs', color: '#8C8C8C' }),
+          text(name, { size: 'md', weight: 'bold', color: muted ? '#8C8C8C' : '#222222' }),
+        ],
+      },
+    ],
+  };
+}
+
+function postbackButton(label, data, style, colour) {
+  return {
+    type: 'button',
+    style,
+    height: 'sm',
+    ...(colour ? { color: colour } : {}),
+    action: { type: 'postback', label, data, displayText: label },
+  };
+}
+
+/**
+ * The last look at a slip before it is booked: how much, out of which
+ * account, into which. The confirm button is the only thing that writes to
+ * the ledger; the other two change the accounts or drop the row.
+ *
+ * `done` draws the same card after booking, without buttons — so the thread
+ * ends on the same picture it was confirmed from, with the TX number added.
+ *
+ * `actions` are postback data strings, built by the caller: this module
+ * draws cards and knows nothing about how a tap is routed.
+ */
+export function confirmCard(entry, { actions = null, done = false, txId = '' } = {}) {
+  const tone = toneFor(entry.transactionType);
+  const t = TONES[tone];
+  const unit = entry.currency === 'USD' ? '$' : '฿';
+  const amount = `${unit}${Number(entry.amount || 0).toLocaleString('th-TH')}`;
+  const title = TYPE_TITLE[tone];
+
+  // Spending has one account; its other end is whoever was paid. Shown so the
+  // card still reads as "from → to" rather than an arrow pointing at nothing.
+  const destination =
+    entry.destinationAccount ||
+    (tone === 'investment' ? entry.asset : '') ||
+    entry.merchant ||
+    (tone === 'expense' ? 'ค่าใช้จ่าย' : '—');
+  const destinationIsAccount = Boolean(entry.destinationAccount);
+
+  const details = [entry.merchant && entry.destinationAccount ? entry.merchant : '', entry.date]
+    .filter(Boolean)
+    .join(' · ');
+
+  const body = [
+    text(amount, { size: 'xxl', weight: 'bold', color: t.accent }),
+    ...(details ? [text(details, { size: 'xs', color: '#8C8C8C', margin: 'xs' })] : []),
+    {
+      type: 'box',
+      layout: 'vertical',
+      margin: 'xl',
+      spacing: 'sm',
+      paddingAll: '14px',
+      backgroundColor: '#F7F7F8',
+      cornerRadius: '10px',
+      contents: [
+        endpoint('จากบัญชี', entry.account || 'ยังไม่ได้เลือก', t.accent, !entry.account),
+        text('↓', { size: 'lg', color: t.accent, margin: 'xs', offsetStart: '1px' }),
+        endpoint(
+          destinationIsAccount ? 'เข้าบัญชี' : tone === 'investment' ? 'ซื้อ' : 'จ่ายให้',
+          destination,
+          t.accent
+        ),
+      ],
+    },
+    text(done ? `${entry.inboxId} → ${txId}` : entry.inboxId || '', {
+      size: 'xxs',
+      color: '#AAAAAA',
+      margin: 'lg',
+      align: 'end',
+    }),
+  ];
+
+  const card = {
+    type: 'bubble',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: done ? '#374151' : t.bar,
+      paddingAll: '16px',
+      contents: [
+        text(done ? `✓  ลงบัญชีแล้ว · ${title}` : `${t.mark}  ยืนยัน${title}`, {
+          color: '#FFFFFF',
+          weight: 'bold',
+        }),
+      ],
+    },
+    body: { type: 'box', layout: 'vertical', paddingAll: '20px', contents: body },
+  };
+
+  if (!done && actions) {
+    card.footer = {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      paddingAll: '16px',
+      contents: [
+        postbackButton('✅ ยืนยันรายการ', actions.confirm, 'primary', t.accent),
+        {
+          type: 'box',
+          layout: 'horizontal',
+          spacing: 'sm',
+          contents: [
+            postbackButton('✏️ เปลี่ยนบัญชี', actions.change, 'secondary'),
+            postbackButton('✖ ยกเลิก', actions.cancel, 'secondary'),
+          ],
+        },
+      ],
+    };
+  }
+
+  return message(
+    done ? `ลงบัญชีแล้ว ${amount}` : `ยืนยัน${title} ${amount}`,
+    card
+  );
+}

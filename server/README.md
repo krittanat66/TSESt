@@ -335,7 +335,31 @@ reviewer looking the same. The full reading is kept in the `AI Result`
 column, so a wrong figure can be traced to what the model thought it saw.
 
 A slip **does not** skip review. It is easier to misread a photo than a
-sentence, not harder, so it waits for the same account tap. The slip's own
+sentence, not harder, so it ends on a confirmation card rather than booking
+on the last tap:
+
+```
+┌ 🔁 ยืนยันโยกย้ายเงิน ──────────────┐
+│ ฿2,500                              │
+│ ● จากบัญชี  SCB Emergency Reserve   │
+│ ↓                                   │
+│ ● เข้าบัญชี SCB Daily Living         │
+│ [ ✅ ยืนยันรายการ ]                  │
+│ [ ✏️ เปลี่ยนบัญชี ] [ ✖ ยกเลิก ]     │
+└─────────────────────────────────────┘
+```
+
+When the account numbers on the slip match 03_ACCOUNTS (or it is spending,
+and the ใช้จ่ายรายวัน account is assumed) the card comes straight back.
+Otherwise the bot asks with account buttons first and the card follows the
+last tap. Only ✅ writes to the ledger; afterwards the card is redrawn without
+buttons and with the TX number.
+
+The card stays in the chat with its buttons live, so Code.gs refuses a
+second confirm, a confirm after ✖, and a ✖ after booking — each answered as
+"ยืนยันไปแล้ว" / "ยกเลิกไปแล้ว" rather than as an error. The row's type,
+amount and chosen accounts ride in the postback data, so drawing the card
+after a tap never has to read the sheet back. The slip's own
 date is carried into the row rather than the date the photo was sent — a slip
 photographed three days later belongs in the month it was paid.
 

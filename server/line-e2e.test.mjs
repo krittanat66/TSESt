@@ -35,6 +35,9 @@ Object.assign(process.env, {
   GEMINI_API_KEY: 'g', GEMINI_API_BASE: `http://127.0.0.1:${stub.address().port}`,
   APPS_SCRIPT_URL: `http://127.0.0.1:${stub.address().port}/apps`, APPS_SCRIPT_TOKEN: 't',
   APP_PASSCODE: '123456', PORT: String(PORT), SPREADSHEET_ID: 'x',
+  // A fixture that does not exist: the sheet fails at once, every run. A real
+  // call to Google here made the timing of each answer depend on the network.
+  NODE_ENV: 'test', WEALTH_FIXTURE: '/nonexistent/wealth.json',
 });
 await import('./index.js');
 await new Promise(r => setTimeout(r, 300));

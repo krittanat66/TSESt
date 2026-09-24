@@ -302,6 +302,9 @@ function confirmInbox(inboxId, sourceAccount, destAccount) {
   var v = inbox.getRange(row, 2, 1, 20).getValues()[0];
   var status = String(v[16] || '').trim();
   if (status === 'Confirmed') throw new Error(inboxId + ' is already confirmed');
+  // A card in the chat keeps its buttons after one is tapped, so a row
+  // cancelled with ❌ can still receive a ✅ later. Cancelled means cancelled.
+  if (status === 'Rejected') throw new Error(inboxId + ' was cancelled');
 
   var type = String(v[6] || '').trim();
   var amount = Number(v[7]) || 0;
@@ -363,6 +366,12 @@ function rejectInbox(inboxId) {
   if (!inbox) throw new Error('no tab ' + INBOX_TAB);
   var row = findInboxRow(inbox, inboxId);
   if (row === -1) throw new Error('inbox row not found: ' + inboxId);
+  // Rejecting a booked row would mark it cancelled while its transaction
+  // stays in 04_TRANSACTIONS — the two sheets would disagree about whether
+  // the money moved. Undoing a booking is an edit to the ledger, not this.
+  var status = String(inbox.getRange(row, 18).getValue() || '').trim();
+  if (status === 'Confirmed') throw new Error(inboxId + ' is already confirmed');
+  if (status === 'Rejected') throw new Error(inboxId + ' was cancelled');
   inbox.getRange(row, 18).setValue('Rejected');
   inbox.getRange(row, 19, 1, 2).setValues([['app', new Date()]]);
   return inboxId;

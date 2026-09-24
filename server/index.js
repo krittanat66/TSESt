@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -15,11 +15,19 @@ import {
   buildPostbacks,
   replyText,
 } from './line-webhook.js';
-import { accountButtons, needsTwoAccounts, orderAccounts } from './line-buttons.js';
+import {
+  accountButtons,
+  needsTwoAccounts,
+  orderAccounts,
+  SLIP_STEPS,
+  encodeSlip,
+  decodeSlip,
+  slipAccountButtons,
+} from './line-buttons.js';
 import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow } from './line-writer.js';
 import { commandReply, dcaDigest } from './line-commands.js';
 import { personaReply } from './line-persona.js';
-import { slipCard, budgetCard, portfolioCard } from './line-flex.js';
+import { slipCard, confirmCard, budgetCard, portfolioCard } from './line-flex.js';
 import { visionConfigured, fetchLineImage, readSlip, slipToRow } from './line-vision.js';
 
 const app = express();
@@ -67,6 +75,12 @@ function requirePasscode(req, res, next) {
 }
 
 async function getWealthData(month) {
+  // Tests only: the end-to-end suite stands in for the sheet with a file,
+  // because googleapis cannot be pointed at a local stub. Both variables have
+  // to be set, so a stray one in a real deploy cannot swap out the sheet.
+  if (process.env.NODE_ENV === 'test' && process.env.WEALTH_FIXTURE) {
+    return JSON.parse(readFileSync(process.env.WEALTH_FIXTURE, 'utf8'));
+  }
   const key = month || 'latest';
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -161,7 +175,9 @@ app.post('/api/line-webhook', async (req, res) => {
   const work = [];
 
   // A tap on an account button finishes a row that is already saved.
-  for (const tap of buildPostbacks(events)) work.push(handleAccountTap(tap));
+  for (const tap of buildPostbacks(events)) {
+    work.push(SLIP_STEPS.has(tap.step) ? handleSlipTap(tap) : handleAccountTap(tap));
+  }
   // A photo takes a round trip through a vision model, so it runs alongside
   // the text rather than behind it.
   for (const img of buildImageEvents(events)) work.push(handleSlip(img));
@@ -329,7 +345,29 @@ async function handleSlip({ messageId, replyToken, receivedAt }) {
     const [inboxId] = await writeInboxRows([row]);
     cache.clear();
     if (!inboxId) return replyToLine(replyToken, slipCard(row));
-    return pendingReply({ ...row, replyToken }, inboxId, pickable);
+
+    const meta = { type: row.transactionType, amount: row.amount, currency: row.currency };
+    const two = needsTwoAccounts(row.transactionType);
+    // Both ends already known — from the account numbers on the slip, or the
+    // daily account for spending — so the card can go straight to the
+    // confirm button. The accounts are shown on it, and "เปลี่ยนบัญชี" is
+    // there for when the guess is wrong.
+    if (row.account && (!two || row.destinationAccount)) {
+      const accounts = two ? [row.account, row.destinationAccount] : [row.account];
+      return replyToLine(
+        replyToken,
+        confirmCard({ ...row, inboxId }, { actions: slipActions(inboxId, meta, accounts) })
+      );
+    }
+
+    // Not enough on the slip to say which accounts: ask, and the confirm card
+    // follows the last tap.
+    if (!pickable.length) return pendingReply({ ...row, replyToken }, inboxId, pickable);
+    return replyToLine(
+      replyToken,
+      slipCard({ ...row, inboxId }),
+      slipAccountButtons(two ? 'sa' : 'se', inboxId, meta, orderAccounts(pickable, row.account))
+    );
   } catch (err) {
     console.error('line-webhook: slip write failed', err.message);
     return replyToLine(replyToken, `บันทึกไม่สำเร็จ — ${err.message}\nเก็บสลิปไว้ก่อน แล้วลองใหม่`);
@@ -401,6 +439,103 @@ async function handleAccountTap({ step, inboxId, answers, replyToken }) {
       /* offering a retry is a bonus; the message matters more */
     }
     return replyToLine(replyToken, `ลงบัญชีไม่สำเร็จ — ${err.message}\n\nลองเลือกใหม่อีกครั้ง`, retry);
+  }
+}
+
+// The three buttons on a confirmation card. Every one carries the full
+// answer, so a tap needs nothing from any earlier one.
+function slipActions(inboxId, meta, accounts) {
+  return {
+    confirm: encodeSlip('ok', inboxId, meta, accounts),
+    change: encodeSlip('chg', inboxId, meta),
+    cancel: encodeSlip('no', inboxId, meta),
+  };
+}
+
+// Apps Script's refusals, as the person reading the chat would put them. A
+// card keeps its buttons after one is tapped, so these are ordinary — a
+// second ✅ on a booked row is a double-tap, not an error.
+function friendlyRefusal(message) {
+  if (/already confirmed/i.test(message)) return 'รายการนี้ยืนยันไปแล้ว ไม่ได้ลงซ้ำ';
+  if (/was cancelled/i.test(message)) return 'รายการนี้ถูกยกเลิกไปแล้ว';
+  return null;
+}
+
+/**
+ * A tap anywhere in the slip flow: an account picked, or a button on the
+ * confirmation card.
+ *
+ *   se  one account chosen for spending        → confirmation card
+ *   sa  first of two chosen                     → ask for the second
+ *   sb  second chosen                           → confirmation card
+ *   ok  ✅ on the card                          → book it
+ *   chg ✏️ on the card                          → pick the accounts again
+ *   no  ✖ on the card                           → drop the row
+ */
+async function handleSlipTap({ step, inboxId, answers, replyToken }) {
+  const { meta, accounts } = decodeSlip(answers);
+  const entry = {
+    inboxId,
+    transactionType: meta.type,
+    amount: meta.amount,
+    currency: meta.currency,
+    account: accounts[0] || '',
+    destinationAccount: accounts[1] || '',
+  };
+
+  try {
+    if (step === 'se' || step === 'sb') {
+      return replyToLine(
+        replyToken,
+        confirmCard(entry, { actions: slipActions(inboxId, meta, accounts) })
+      );
+    }
+
+    if (step === 'sa' || step === 'chg') {
+      const data = await getWealthData();
+      const pickable = data.accounts.filter((a) => a.status === 'Active');
+      if (!pickable.length) {
+        return replyToLine(replyToken, 'ตอนนี้อ่านรายชื่อบัญชีไม่ได้ — ยืนยันในแอปแท็บ More');
+      }
+      if (step === 'sa') {
+        return replyToLine(
+          replyToken,
+          `จาก ${accounts[0]}\n\nเข้าบัญชีไหน`,
+          slipAccountButtons('sb', inboxId, meta, pickable, [accounts[0]])
+        );
+      }
+      const two = needsTwoAccounts(meta.type);
+      return replyToLine(
+        replyToken,
+        two ? 'จ่ายจากบัญชีไหน' : 'หักจากบัญชีไหน',
+        slipAccountButtons(two ? 'sa' : 'se', inboxId, meta, pickable)
+      );
+    }
+
+    if (step === 'no') {
+      await reviewInboxRow(inboxId, 'reject');
+      cache.clear();
+      return replyToLine(replyToken, `ยกเลิก ${inboxId} แล้ว ไม่ได้ลงบัญชี`);
+    }
+
+    if (step === 'ok') {
+      if (!entry.account) return replyToLine(replyToken, 'ยังไม่ได้เลือกบัญชี กด ✏️ เปลี่ยนบัญชี');
+      const result = await reviewInboxRow(inboxId, 'confirm', {
+        source: entry.account,
+        destination: entry.destinationAccount,
+      });
+      cache.clear();
+      return replyToLine(replyToken, confirmCard(entry, { done: true, txId: result.txId ?? '' }));
+    }
+
+    return replyToLine(replyToken, 'ไม่รู้จักปุ่มนี้ ลองส่งสลิปใหม่อีกครั้ง');
+  } catch (err) {
+    console.error('line-webhook: slip tap failed', err.message);
+    const refusal = friendlyRefusal(err.message);
+    if (refusal) return replyToLine(replyToken, refusal);
+    // The card's buttons still work, so pointing back at them is enough —
+    // no need to draw a second card.
+    return replyToLine(replyToken, `ทำรายการไม่สำเร็จ — ${err.message}\n\nกดปุ่มบนการ์ดเดิมอีกครั้งได้เลย`);
   }
 }
 
