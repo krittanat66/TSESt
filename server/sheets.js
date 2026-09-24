@@ -43,8 +43,11 @@ export function buildAuth() {
 // are fetched one at a time so a missing one costs only its own data.
 const OPTIONAL_RANGES = {
   dcaScore: "'20_DCA_SCORE'!B5:M300",
-  budget: "'10_BUDGET'!B5:I400",
+  // J is "Transferred": the month's budget has reached the spending account.
+  budget: "'10_BUDGET'!B5:J400",
   pvd: "'09_PVD'!B5:Q200",
+  // Up to THB Equivalent (K): enough to see what moved into which account.
+  transactions: "'04_TRANSACTIONS'!B5:K3000",
 };
 
 async function fetchRange(range) {

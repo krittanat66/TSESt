@@ -345,6 +345,9 @@ function buildBudget(rows, key) {
       remaining: money(budget - actual),
       note: str(r.Note),
       spendable: !OFF_WALLET.test(str(r.Category)),
+      // Ticked once the month's budget has been moved into the spending
+      // account (column J, written by the LINE bot's ✓ button).
+      transferred: Boolean(str(r.Transferred)) || num(r.Transferred) > 0,
     };
   });
 
@@ -359,6 +362,57 @@ function buildBudget(rows, key) {
     dailyRemaining: sum(wallet, 'remaining'),
     committed: sum(categories.filter((c) => !c.spendable), 'budget'),
   };
+}
+
+const prevMonthKey = (key) => {
+  const [y, m] = key.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+};
+
+/**
+ * Has each month's spending budget been moved into the spending account?
+ *
+ * Daily Expenses and Cat are not spent out of a bar that drains — they are
+ * amounts moved into the ใช้จ่ายรายวัน account at the start of the month, so
+ * the question each month is a yes or no. Yes if it was ticked by hand, or
+ * if transfers into that account that month add up to cover it; the budgets
+ * are covered in sheet order, so a single ฿9,000 transfer ticks both.
+ */
+export function buildBudgetTransfers(budgetRows, txRows, dailyAccount, key) {
+  return [key, prevMonthKey(key)].map((month) => {
+    const items = budgetRows
+      .filter((r) => monthKey(r.Month) === month && str(r.Category) && !OFF_WALLET.test(str(r.Category)))
+      .map((r) => ({
+        category: str(r.Category),
+        budget: num(r.Budget),
+        marked: Boolean(str(r.Transferred)) || num(r.Transferred) > 0,
+      }))
+      .filter((i) => i.budget > 0);
+
+    const received = dailyAccount
+      ? money(
+          txRows
+            .filter(
+              (t) =>
+                str(t.Type) === 'Transfer' &&
+                str(t['Destination Account']) === dailyAccount &&
+                monthKey(t.Date) === month
+            )
+            .reduce((s, t) => s + (num(t['THB Equivalent']) || num(t.Amount)), 0)
+        )
+      : 0;
+
+    let covered = 0;
+    return {
+      month,
+      received,
+      items: items.map((i) => {
+        covered += i.budget;
+        const auto = received >= covered;
+        return { ...i, done: i.marked || auto, how: i.marked ? 'marked' : auto ? 'transfer' : null };
+      }),
+    };
+  });
 }
 
 // 09_PVD tracks the fund month by month and reconciles to the statement, but
@@ -539,6 +593,12 @@ export function mapSheetsToAppData(raw, requestedMonth) {
     dcaScores,
     dcaScoresLatest,
     budget,
+    budgetTransfers: buildBudgetTransfers(
+      rowsToObjects(raw.budget ?? []),
+      rowsToObjects(raw.transactions ?? []),
+      cash.dailyAccount,
+      key
+    ),
     pvdFund,
     netWorthHistory,
     inbox,

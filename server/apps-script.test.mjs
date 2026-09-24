@@ -54,7 +54,13 @@ function workbook() {
   ]);
   const tx = makeSheet('04_TRANSACTIONS', TX_HEADER);
   const inbox = makeSheet('16_INBOX', INBOX_HEADER);
-  const sheets = { '03_ACCOUNTS': accounts, '04_TRANSACTIONS': tx, '16_INBOX': inbox };
+  // 10_BUDGET: six rows a month, as in the sheet; J (Transferred) empty.
+  const months = [new Date(2026, 7, 1), new Date(2026, 8, 1)];
+  const cats = ['Daily Expenses', 'Cat', 'Parking', 'US Stocks', 'Investment Reserve', 'PVD'];
+  const budget = makeSheet('10_BUDGET',
+    ['Month', 'Category', 'Budget', 'Actual', 'Difference', 'Usage %', 'Status', 'Note', ''],
+    months.flatMap((m) => cats.map((c) => [m, c, 1000, 0, 1000, 0, 'Normal', ''])));
+  const sheets = { '03_ACCOUNTS': accounts, '04_TRANSACTIONS': tx, '16_INBOX': inbox, '10_BUDGET': budget };
 
   // The J-column formula from ops-account-movement: opening, plus what
   // arrived as Destination, minus what left as Source, after Opening Date.
@@ -74,7 +80,7 @@ function workbook() {
       row[accounts.col('Current Balance')] = bal;
     }
   }
-  return { sheets, recalc, accounts, tx, inbox };
+  return { sheets, recalc, accounts, tx, inbox, budget };
 }
 
 function loadCodeGs(book) {
@@ -93,7 +99,7 @@ function loadCodeGs(book) {
     Logger: { log() {} },
   };
   const src = readFileSync(new URL('./apps-script/Code.gs', import.meta.url), 'utf8');
-  const names = ['confirmInbox', 'rejectInbox', 'appendInbox', 'accountBalances'];
+  const names = ['confirmInbox', 'rejectInbox', 'appendInbox', 'accountBalances', 'markBudgetTransfer'];
   // eslint-disable-next-line no-new-func
   const factory = new Function(...Object.keys(globals), `${src}\nreturn { ${names.join(', ')} };`);
   return factory(...Object.values(globals));
@@ -153,6 +159,23 @@ function inboxRow(gs, fields) {
   try { gs.rejectInbox(id); msg = ''; } catch (e) { msg = e.message; }
   check(/already confirmed/.test(msg), `cancelling a booked row is refused: ${msg}`);
   check(gs.accountBalances(['SCB Daily Living Account'])[0].balance === 250, 'booked once, not twice');
+}
+
+// --- Ticking a budget as moved into the spending account ------------------
+{
+  const book = workbook();
+  const gs = loadCodeGs(book);
+  gs.markBudgetTransfer('2026-09', 'Cat');
+  const B = book.budget;
+  const J = 10;
+  const row = (m, c) => B.grid.findIndex((r) => r?.[2] instanceof Date && r[2].getMonth() === m && r[3] === c);
+  check(B.grid[5]?.[J] === 'Transferred', `the header is written: ${B.grid[5]?.[J]}`);
+  check(B.grid[row(8, 'Cat')][J] instanceof Date, 'September Cat is ticked');
+  check(!B.grid[row(8, 'Daily Expenses')][J], 'only that row — not Daily Expenses');
+  check(!B.grid[row(7, 'Cat')][J], 'only that month — not August');
+  let msg = '';
+  try { gs.markBudgetTransfer('2026-12', 'Cat'); } catch (e) { msg = e.message; }
+  check(/ไม่พบแถว/.test(msg), `a month with no row is refused, not guessed: ${msg}`);
 }
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');

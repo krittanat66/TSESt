@@ -62,6 +62,11 @@ export async function reviewInboxRow(inboxId, action, accounts = {}) {
   });
 }
 
+// Ticks a month's budget as moved into the spending account (10_BUDGET J).
+export async function markBudgetTransfer(month, category) {
+  return postToAppsScript({ kind: 'budget-mark', month, category });
+}
+
 // Who sent the message a reply token answers, kept briefly. Used only when
 // the reply itself is refused — see replyToLine.
 const senders = new Map();

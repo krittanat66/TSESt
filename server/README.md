@@ -261,7 +261,7 @@ A message that carries no number is a question, not spending:
 | `สรุป` | ยอดในบัญชี งบเดือนนี้ และความมั่งคั่งสุทธิ |
 | `หุ้น` (หรือ `dca`, `พอร์ต`) | แผน DCA ผลตอบแทนตั้งแต่ซื้อ เหตุผล และข่าว |
 | `ข่าว` | เฉพาะข่าวและเหตุผลรายตัว |
-| `เช็คงบ` | การ์ดงบประมาณ พร้อมแถบว่าหมวดไหนใช้ไปเท่าไหร่ |
+| `เช็คงบ` | งบบัญชีใช้จ่ายเดือนนี้และเดือนก่อน: โอนเข้าบัญชีใช้จ่ายแล้วหรือยัง ✅/❌ |
 | `เช็คพอร์ต` | หุ้นที่ถือ คะแนน และแผนแบ่งเงิน DCA เดือนนี้ |
 | `ช่วย` | รายการคำสั่ง |
 
@@ -403,6 +403,27 @@ than it looks: a bare `ขอ` would swallow `ขอสรุป`, and `เง�
 "โหมดพูดคุย" enters no mode. There is nothing to enter, because small talk is
 already answered whenever a message carries no money in it — and a mode that
 could be left on would be a way to lose an expense.
+
+### Spending budgets (เช็คงบ)
+
+Daily Expenses (฿7,000) and Cat (฿2,000) are not drained over the month on
+this card; they are amounts moved into the ใช้จ่ายรายวัน account at its
+start. So the card asks one thing per budget, for this month and last:
+has it been moved? ✅ or ❌, no bars.
+
+A budget is ✅ when 10_BUDGET column J ("Transferred") is filled, or when
+transfers into the spending account that month cover it — in sheet order,
+so one ฿9,000 transfer ticks both. A ❌ comes with a "✓ โอน…แล้ว" button,
+for a transfer made in the bank app and never recorded; it writes today's
+date into J (`budget-mark` in Code.gs). New month rows copy B..I only, so a
+tick never carries into the next month.
+
+### Income
+
+02_MONTHLY Income (Actual) counts `Type = Income` rows only when they are
+not a move between two of the owner's own accounts — both ends named in
+03_ACCOUNTS. The monthly SCB Salary → Dime Save transfer (VL-08) is a
+transfer however it was typed, and never income.
 
 ### The DCA split (เช็คพอร์ต)
 

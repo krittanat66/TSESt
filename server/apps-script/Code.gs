@@ -79,6 +79,13 @@ function doPost(e) {
       });
     }
 
+    if (body.kind === 'budget-mark') {
+      if (!body.month || !body.category) return reply({ ok: false, error: 'month and category are required' });
+      return withLock(function () {
+        return reply({ ok: true, marked: markBudgetTransfer(body.month, body.category) });
+      });
+    }
+
     if (body.kind === 'inbox-reject') {
       if (!body.inboxId) return reply({ ok: false, error: 'inboxId is required' });
       return withLock(function () {
@@ -527,6 +534,34 @@ function ensureCurrentMonthRows() {
 
   Logger.log(added ? ('เพิ่ม ' + added + ' แถวสำหรับเดือนนี้') : 'เดือนนี้มีแถวอยู่แล้ว');
   return added;
+}
+
+/**
+ * Records that a month's budget has been moved into the spending account.
+ *
+ * Written to 10_BUDGET column J ("Transferred"), beside the budget it
+ * confirms. Only J: the new-month copy takes B..I, so a tick never carries
+ * into the next month by itself. month is 'YYYY-MM'.
+ */
+function markBudgetTransfer(month, category) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BUDGET_TAB);
+  if (!sheet) throw new Error('no tab ' + BUDGET_TAB);
+  var header = sheet.getRange(FIRST_DATA_ROW - 1, 10);
+  if (!String(header.getValue()).trim()) header.setValue('Transferred');
+
+  var last = sheet.getLastRow();
+  if (last < FIRST_DATA_ROW) throw new Error('10_BUDGET has no rows');
+  var rows = sheet.getRange(FIRST_DATA_ROW, 2, last - FIRST_DATA_ROW + 1, 2).getValues();
+  var parts = String(month).split('-');
+  var want = new Date(Number(parts[0]), Number(parts[1]) - 1, 1).getTime();
+  for (var i = 0; i < rows.length; i += 1) {
+    if (!rows[i][0]) continue;
+    if (monthStart(rows[i][0]).getTime() !== want) continue;
+    if (String(rows[i][1]).trim() !== String(category).trim()) continue;
+    sheet.getRange(FIRST_DATA_ROW + i, 10).setValue(new Date());
+    return month + ' ' + category;
+  }
+  throw new Error('ไม่พบแถว ' + category + ' ของเดือน ' + month + ' ใน 10_BUDGET');
 }
 
 /** Adds the new month's rows on the 1st. Run once to install. */

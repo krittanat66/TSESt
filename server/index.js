@@ -26,7 +26,14 @@ import {
   slipAccountButtons,
   accountByNumber,
 } from './line-buttons.js';
-import { writeInboxRows, replyToLine, broadcastToLine, reviewInboxRow, rememberSender } from './line-writer.js';
+import {
+  writeInboxRows,
+  replyToLine,
+  broadcastToLine,
+  reviewInboxRow,
+  rememberSender,
+  markBudgetTransfer,
+} from './line-writer.js';
 import { commandReply, dcaDigest, SCAN_QUICK_REPLY } from './line-commands.js';
 import { personaReply } from './line-persona.js';
 import { slipCard, confirmCard, budgetCard, portfolioCard } from './line-flex.js';
@@ -184,6 +191,8 @@ app.post('/api/line-webhook', async (req, res) => {
   for (const tap of buildPostbacks(events)) {
     // rs|messageId: read a slip photo again after a failed read.
     if (tap.step === 'rs') work.push(handleSlip({ messageId: tap.inboxId, replyToken: tap.replyToken }));
+    // bt|YYYY-MM|Category: tick a budget as moved into the spending account.
+    else if (tap.step === 'bt') work.push(handleBudgetMark(tap));
     else work.push(SLIP_STEPS.has(tap.step) ? handleSlipTap(tap) : handleAccountTap(tap));
   }
   // A photo takes a round trip through a vision model, so it runs alongside
@@ -344,7 +353,7 @@ async function handleTextRows(rows) {
       const data = await getWealthData();
       for (const c of sheetCommands) {
         const card =
-          c.command === 'budget' ? budgetCard(data) : c.command === 'portfolio' ? dcaCard(data) : null;
+          c.command === 'budget' ? budgetCard(data, { markData: budgetMarkData }) : c.command === 'portfolio' ? dcaCard(data) : null;
         replies.push(replyToLine(c.replyToken, card ?? commandReply(c.command, data)));
       }
     } catch (err) {
@@ -356,6 +365,22 @@ async function handleTextRows(rows) {
   }
 
   await Promise.all(replies);
+}
+
+const budgetMarkData = (month, category) => encode('bt', month, [category]);
+
+/** ✓ on the budget card: record the transfer, answer with the card redrawn. */
+async function handleBudgetMark({ inboxId: month, answers, replyToken }) {
+  const [category] = answers;
+  try {
+    await markBudgetTransfer(month, category);
+    cache.clear();
+    const data = await getWealthData();
+    return replyToLine(replyToken, budgetCard(data, { markData: budgetMarkData }));
+  } catch (err) {
+    console.error('line-webhook: budget mark failed', err.message);
+    return replyToLine(replyToken, `บันทึกไม่สำเร็จ — ${err.message}\nกดปุ่มเดิมอีกครั้งได้เลย`);
+  }
 }
 
 /** The portfolio tile: holdings, scores, and this month's DCA split. */

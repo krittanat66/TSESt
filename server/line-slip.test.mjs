@@ -92,6 +92,7 @@ const stub = createServer((req, res) => {
       const p = JSON.parse(b);
       appsCalls.push(p);
       if (p.kind === 'inbox') return res.end(JSON.stringify({ ok: true, ids: ['INBOX-0042'] }));
+      if (p.kind === 'budget-mark') return res.end(JSON.stringify({ ok: true, marked: `${p.month} ${p.category}` }));
       // Mirrors Code.gs: a row is booked once, and cancelled means cancelled.
       if (p.kind === 'inbox-confirm') {
         if (confirmed.has(p.inboxId)) return res.end(JSON.stringify({ ok: false, error: `Error: ${p.inboxId} is already confirmed` }));
@@ -125,6 +126,13 @@ writeFileSync(fixture, JSON.stringify({
   ],
   dashboard: { month: 'ก.ย. 2026', cash: { dailyAccount: 'SCB Daily Living Account' } },
   monthly: { income: { plan: 21745 }, pvdDeducted: 2841.75 },
+  budgetTransfers: [
+    { month: '2026-09', received: 0, items: [
+      { category: 'Daily Expenses', budget: 7000, done: false, how: null },
+      { category: 'Cat', budget: 2000, done: false, how: null },
+    ] },
+    { month: '2026-08', received: 0, items: [] },
+  ],
   dca: [{ label: 'US Stocks', plan: 3000, actual: 0, percentage: 0 }, { label: 'Investment Reserve', plan: 1000, actual: 0, percentage: 0 }],
   investment: { byMarket: { usStocks: { holdings: [
     { asset: 'NVDA', value: 9000, returnPct: 51.3 }, { asset: 'MSFT', value: 4000, returnPct: 4.2 },
@@ -407,6 +415,16 @@ check(pcard?.type === 'flex' && ptxt.includes('แผน DCA'), `the tile answer
 check(ptxt.includes('เกิน 20%'), `the hard cap is flagged: ${ptxt}`);
 check(ptxt.includes('฿3,000') && ptxt.includes('เงินสำรอง ฿1,000'), 'budget from 08_DCA_PLAN');
 console.log('  เช็คพอร์ต →', ptxt.slice(0, 400));
+
+// --- 11. เช็คงบ: ✅/❌ and the ✓ button ------------------------------------
+appsCalls.length = 0;
+const [bcard] = await deliver({ type: 'message', message: { type: 'text', text: 'เช็คงบ' }, replyToken: 'r' });
+const bbtns = buttons(bcard?.contents);
+check(bbtns.length === 2 && bbtns[0].data === 'bt|2026-09|Daily Expenses', `one ✓ button per budget not yet moved: ${bbtns.map((x) => x.data)}`);
+const [after] = await tap(bbtns[1].data);
+const mark = appsCalls.find((c) => c.kind === 'budget-mark');
+check(mark?.month === '2026-09' && mark?.category === 'Cat', `the tick reaches the sheet: ${JSON.stringify(mark)}`);
+check(after?.type === 'flex', `answered with the card redrawn: ${after?.text ?? after?.type}`);
 
 console.log(fail.length ? '❌ FAIL:\n  ' + fail.join('\n  ') : '✅ all assertions passed');
 process.exit(fail.length ? 1 : 0);

@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node mapper.test.mjs && node payday.test.mjs && node dca-plan.test.mjs && node apps-script.test.mjs && node line.test.mjs && node line-ui.test.mjs && node line-e2e.test.mjs && node line-slip.test.mjs && npm run check:gs",
+    "test": "node mapper.test.mjs && node payday.test.mjs && node dca-plan.test.mjs && node budget-transfers.test.mjs && node apps-script.test.mjs && node line.test.mjs && node line-ui.test.mjs && node line-e2e.test.mjs && node line-slip.test.mjs && npm run check:gs",
     "richmenu": "node scripts/richmenu.mjs install",
     "check:gs": "node -e \"new Function(require('node:fs').readFileSync('apps-script/Code.gs','utf8'))\""
   },

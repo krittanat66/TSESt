@@ -161,37 +161,134 @@ export function slipCard(entry, { pending = true } = {}) {
 }
 
 /** เช็คงบ — what is left to spend this month, per category. */
-export function budgetCard(data) {
-  const { dashboard, budget } = data;
-  const cash = dashboard.cash ?? {};
-  const rows = [row('เงินในบัญชีใช้จ่าย', baht(dashboard.availableCash))];
-  if (cash.topUp) rows.push(row('โอนมาเติมได้', baht(cash.topUp)));
-  if (cash.reserved) rows.push(row('เงินกันไว้', baht(cash.reserved)));
-
-  const bars = (budget?.categories ?? [])
-    .filter((c) => c.spendable && c.budget > 0)
-    .map((c) => ({ label: c.category, used: c.budget - c.remaining, total: c.budget }));
-
-  return message(
-    `งบ ${dashboard.month}`,
-    bubble({
-      tone: 'budget',
-      title: `งบค่าใช้จ่าย ${dashboard.month}`,
-      headline: budget?.dailyBudget ? baht(budget.dailyRemaining) : baht(dashboard.availableCash),
-      rows,
-      bars,
-      footnote: budget?.dailyBudget
-        ? `เหลือใช้ได้จากงบ ${baht(budget.dailyBudget)}`
-        : 'ยังไม่ได้ตั้งงบในชีต 10_BUDGET',
-    })
-  );
-}
-
 const THAI_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const thaiMonth = (key) => {
   const [y, m] = String(key ?? '').split('-').map(Number);
   return y && m ? `${THAI_MONTHS[m - 1]} ${y + 543}` : '';
 };
+
+// What each spending budget is for, in the words the owner uses.
+const BUDGET_NAMES = { 'Daily Expenses': 'ค่าใช้จ่าย', Cat: 'ค่าแมว' };
+export const budgetName = (c) => BUDGET_NAMES[c] ?? c;
+
+function transferLine(item) {
+  return {
+    type: 'box',
+    layout: 'horizontal',
+    spacing: 'md',
+    paddingTop: '6px',
+    paddingBottom: '6px',
+    contents: [
+      text(item.done ? '✅' : '❌', { size: 'md', flex: 0, gravity: 'center' }),
+      {
+        type: 'box',
+        layout: 'vertical',
+        flex: 5,
+        contents: [
+          text(`${item.category} · ${budgetName(item.category)}`, { size: 'sm', weight: 'bold', color: '#111827' }),
+          text(
+            item.how === 'transfer' ? 'โอนแล้ว (จากรายการโอน)' : item.how === 'marked' ? 'โอนแล้ว' : 'ยังไม่โอน',
+            { size: 'xxs', color: item.done ? '#059669' : '#DC2626' }
+          ),
+        ],
+      },
+      text(baht(item.budget), { size: 'sm', weight: 'bold', align: 'end', gravity: 'center', flex: 3, color: '#111827' }),
+    ],
+  };
+}
+
+/**
+ * เช็คงบ — has this month's (and last month's) spending money been moved into
+ * the spending account? Each budget is a yes or no, not a bar: the ฿7,000 and
+ * ฿2,000 are moved in once at the start of the month, and the only question
+ * is whether that happened.
+ *
+ * `markData(month, category)` builds the postback for "mark as transferred";
+ * the card only draws.
+ */
+export function budgetCard(data, { markData = null } = {}) {
+  const t = TONES.budget;
+  const { dashboard } = data;
+  const months = data.budgetTransfers ?? [];
+
+  const body = [
+    text('เงินในบัญชีใช้จ่ายตอนนี้', { size: 'xs', color: '#8C8C8C' }),
+    text(baht(dashboard.availableCash), { size: 'xxl', weight: 'bold', color: t.accent }),
+  ];
+  if (dashboard.cash?.dailyAccount) {
+    body.push(text(dashboard.cash.dailyAccount, { size: 'xxs', color: '#8C8C8C' }));
+  }
+
+  const pending = [];
+  months.forEach((m, i) => {
+    if (!m.items.length) return;
+    body.push({ type: 'separator', margin: 'lg' });
+    body.push({
+      type: 'box',
+      layout: 'baseline',
+      margin: 'md',
+      contents: [
+        text(`${thaiMonth(m.month)}${i === 0 ? ' (เดือนนี้)' : ''}`, { size: 'sm', weight: 'bold', color: t.bar, flex: 0 }),
+        text(m.items.every((x) => x.done) ? 'ครบแล้ว' : 'ยังไม่ครบ', {
+          size: 'xxs',
+          align: 'end',
+          color: m.items.every((x) => x.done) ? '#059669' : '#DC2626',
+        }),
+      ],
+    });
+    body.push({ type: 'box', layout: 'vertical', contents: m.items.map(transferLine) });
+    if (m.received) {
+      body.push(text(`โอนเข้าบัญชีใช้จ่ายเดือนนี้ ${baht(m.received)}`, { size: 'xxs', color: '#8C8C8C' }));
+    }
+    m.items.filter((x) => !x.done).forEach((x) => pending.push({ month: m.month, ...x }));
+  });
+
+  if (!months.some((m) => m.items.length)) {
+    body.push(text('ยังไม่มีงบของเดือนนี้ในชีต 10_BUDGET', { size: 'xs', color: '#9CA3AF', margin: 'lg' }));
+  }
+
+  const card = {
+    type: 'bubble',
+    size: 'mega',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: t.bar,
+      paddingAll: '16px',
+      contents: [text(`${t.mark}  งบบัญชีใช้จ่าย`, { color: '#FFFFFF', weight: 'bold' })],
+    },
+    body: { type: 'box', layout: 'vertical', paddingAll: '20px', contents: body },
+  };
+
+  // One button per budget not yet moved, so a transfer made outside the
+  // ledger (straight in the bank app) can still be ticked off.
+  if (markData && pending.length) {
+    card.footer = {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'sm',
+      paddingAll: '16px',
+      contents: pending.slice(0, 4).map((x) => ({
+        type: 'button',
+        style: 'secondary',
+        height: 'sm',
+        action: {
+          type: 'postback',
+          // LINE cuts labels at 20 characters; last month's names its month.
+          label: (x.month === months[0]?.month
+            ? `✓ โอน${budgetName(x.category)}แล้ว`
+            : `✓ ${THAI_MONTHS[Number(x.month.slice(5)) - 1]} ${budgetName(x.category)}`
+          ).slice(0, 20),
+          data: markData(x.month, x.category),
+          displayText: `โอน${budgetName(x.category)} ${thaiMonth(x.month)} แล้ว`,
+        },
+      })),
+    };
+  }
+
+  const done = months[0]?.items?.every((x) => x.done);
+  return message(`งบบัญชีใช้จ่าย ${thaiMonth(months[0]?.month)} ${done ? 'ครบแล้ว' : 'ยังไม่ครบ'}`, card);
+}
 
 // Score bands as the DCA rules use them: 7+ conviction, 4-6 steady middle,
 // 3 and under the deliberate low weight (SCHG/SCHD live here).

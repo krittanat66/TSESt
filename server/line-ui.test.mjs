@@ -114,10 +114,29 @@ const data = {
   dca: [{ label: 'US Stocks', plan: 3000, actual: 3000, percentage: 100 }],
   dcaScores: [{ ticker: 'NVDA', score: 8, resultPct: 51.3 }, { ticker: 'AAPL', score: 6, resultPct: -3 }],
 };
-const b = budgetCard(data);
-check(b.type === 'flex' && JSON.stringify(b).includes('Food'), 'the budget card lists categories');
-const widths = [...JSON.stringify(b).matchAll(/"width":"(\d+)%"/g)].map((m) => Number(m[1]));
-check(widths.every((w) => w <= 100), `bars clamp at 100%: ${widths.join(',')}`);
+// The budget card: this month and last, each budget ✅ or ❌, no bars.
+const transfers = [
+  { month: '2026-10', received: 7000, items: [
+    { category: 'Daily Expenses', budget: 7000, done: true, how: 'transfer' },
+    { category: 'Cat', budget: 2000, done: false, how: null },
+  ] },
+  { month: '2026-09', received: 0, items: [
+    { category: 'Daily Expenses', budget: 7000, done: true, how: 'marked' },
+    { category: 'Cat', budget: 2000, done: false, how: null },
+  ] },
+];
+const b = budgetCard({ ...data, budgetTransfers: transfers }, { markData: (m, c) => `bt|${m}|${c}` });
+const bText = JSON.stringify(b);
+check(b.type === 'flex', 'the budget card is a card');
+check(bText.includes('✅') && bText.includes('❌'), 'done and not-done are marked');
+check(!bText.includes('"width":"'), 'no progress bars on the budget card');
+check(bText.includes('ต.ค. 2569 (เดือนนี้)') && bText.includes('ก.ย. 2569'), 'this month and last month');
+check(bText.includes('ค่าแมว'), 'budgets carry their Thai name');
+const marks = [];
+(function walk(n) { if (n && typeof n === 'object') { if (n.type === 'postback') marks.push(n); Object.values(n).forEach(walk); } })(b);
+check(marks.map((m) => m.data).join() === 'bt|2026-10|Cat,bt|2026-09|Cat', `a ✓ button per budget not yet moved: ${marks.map((m) => m.data)}`);
+check(marks.every((m) => [...m.label].length <= 20), `button labels fit: ${marks.map((m) => m.label)}`);
+console.log('  budget buttons →', marks.map((m) => m.label).join(' | '));
 const plan = buildDcaPlan({
   holdings: [{ asset: 'NVDA', value: 5000, returnPct: 51.3 }, { asset: 'AAPL', value: 5000, returnPct: -3 },
     { asset: 'MSFT', value: 5000, returnPct: 4 }, { asset: 'AMPX', value: 5000, returnPct: 0 }],
