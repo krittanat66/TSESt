@@ -11,13 +11,14 @@ import { WealthScreen } from './screens/WealthScreen';
 import { MoreScreen } from './screens/MoreScreen';
 
 function DataSourceBadge() {
-  const { loading, isLive, error, refresh } = useWealth();
+  const { loading, refreshing, isLive, error, refresh } = useWealth();
 
   if (loading) return null;
 
   return (
     <button
       onClick={refresh}
+      disabled={refreshing}
       title={error ? `Sheet unreachable: ${error}` : 'Tap to refresh from Google Sheets'}
       style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}
       className={`fixed right-3 z-50 text-[10px] px-2 py-1 rounded-full border ${
@@ -26,7 +27,7 @@ function DataSourceBadge() {
           : 'border-warning/50 text-warning bg-warning/10'
       }`}
     >
-      {isLive ? '● Live sheet' : '● Mock data'}
+      {refreshing ? '↻ กำลังอัปเดต…' : isLive ? '● Live sheet' : '● Mock data'}
     </button>
   );
 }
@@ -40,6 +41,7 @@ function AppShell() {
   // it empty, so a rejected passcode cleared the field and showed nothing at
   // all. It keeps its own busy state instead.
   if (locked) return <PasscodeGate />;
+  // First load only. A refresh keeps the screen up (see `refreshing`).
   if (loading) return <div className="min-h-screen bg-bg-primary" />;
 
   const renderScreen = () => {
@@ -71,10 +73,6 @@ function AppShell() {
         <BottomNavigation activeTab={activeTab} onTabChange={setActiveTab} />
       </div>
 
-      {/* Desktop preview info */}
-      <div className="fixed bottom-4 right-4 text-xs text-text-tertiary bg-bg-card p-2 rounded border border-border-soft max-w-xs hidden md:block">
-        <p>MY WEALTH UI • Mobile 390×844px viewport</p>
-      </div>
     </div>
   );
 }

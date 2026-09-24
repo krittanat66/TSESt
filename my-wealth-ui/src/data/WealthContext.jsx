@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { mockData } from './mockData';
 
 const WealthContext = createContext(null);
@@ -31,10 +31,26 @@ export function WealthProvider({ children }) {
   const [error, setError] = useState(null);
   const [isLive, setIsLive] = useState(false);
   const [locked, setLocked] = useState(false);
+  // A refresh after the first load. Kept apart from `loading` because the app
+  // shell blanks the whole screen while loading: doing that on every refresh
+  // unmounted the open screen after each confirm, jumping it to the top and
+  // throwing away whatever it was showing.
+  const [refreshing, setRefreshing] = useState(false);
+  const [fetchedAt, setFetchedAt] = useState(null);
+  // Inbox rows settled in this session, by id. The sheet is re-read after
+  // every confirm, but a row the read still reports as pending — or one
+  // settled from LINE before the next read — should not sit on screen asking
+  // to be confirmed again.
+  const [settled, setSettled] = useState({});
+  const hasData = useRef(false);
+  const lastLoad = useRef(0);
 
   const load = useCallback(async (passcode) => {
     const code = passcode ?? readPasscode();
-    setLoading(true);
+    const first = !hasData.current || Boolean(passcode);
+    if (first) setLoading(true);
+    else setRefreshing(true);
+    lastLoad.current = Date.now();
     try {
       const res = await fetch(`${API_URL}/wealth`, {
         headers: code ? { Authorization: `Bearer ${code}` } : {},
@@ -69,20 +85,40 @@ export function WealthProvider({ children }) {
       const live = await res.json();
       if (passcode) writePasscode(passcode);
       setData(live);
+      hasData.current = true;
+      setFetchedAt(new Date());
       setIsLive(true);
       setLocked(false);
       setError(null);
       return 'ok';
     } catch (err) {
       // The sheet is the source of truth, but the UI stays usable without it.
-      setData(mockData);
-      setIsLive(false);
+      // A refresh that fails keeps the real figures already on screen:
+      // swapping in the sample data would show made-up balances as if they
+      // were the owner's, just because one read timed out.
+      if (!hasData.current) {
+        setData(mockData);
+        setIsLive(false);
+      }
       setError(err.message);
       return 'sheet-error';
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
+
+  // Back from LINE after confirming there: re-read, so the app is not showing
+  // the row as still waiting. Throttled — switching apps is frequent.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || !hasData.current) return;
+      if (Date.now() - lastLoad.current < 20_000) return;
+      load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [load]);
 
   useEffect(() => {
     if (readPasscode()) load();
@@ -109,7 +145,8 @@ export function WealthProvider({ children }) {
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) return { ok: false, error: body.error || `Server responded ${res.status}` };
-        await load();
+        setSettled((prev) => ({ ...prev, [id]: action === 'confirm' ? 'Confirmed' : 'Rejected' }));
+        load(); // in the background; the row is already gone from the list
         return { ok: true, txId: body.txId };
       } catch (err) {
         return { ok: false, error: err.message };
@@ -135,9 +172,22 @@ export function WealthProvider({ children }) {
     }
   }, []);
 
+  // What still needs a decision: not confirmed, not rejected, not settled
+  // here since the last read.
+  const pendingInbox = useMemo(
+    () =>
+      (data.inbox ?? []).filter(
+        (i) => i.status !== 'Confirmed' && i.status !== 'Rejected' && !settled[i.id]
+      ),
+    [data.inbox, settled]
+  );
+
   const value = useMemo(
     () => ({
       data,
+      pendingInbox,
+      refreshing,
+      fetchedAt,
       loading,
       error,
       isLive,
@@ -147,7 +197,7 @@ export function WealthProvider({ children }) {
       reviewInbox,
       installLineMenu,
     }),
-    [data, loading, error, isLive, locked, load, reviewInbox, installLineMenu]
+    [data, pendingInbox, refreshing, fetchedAt, loading, error, isLive, locked, load, reviewInbox, installLineMenu]
   );
 
   return <WealthContext.Provider value={value}>{children}</WealthContext.Provider>;

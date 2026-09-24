@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Check, ChevronRight, Inbox, Settings, PieChart, FileText, AlertCircle, Lock, MessageCircle, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, Inbox, Settings, PieChart, FileText, AlertCircle, Lock, MessageCircle, X } from 'lucide-react';
 import { Header } from '../components/Navigation';
 import { useWealth } from '../data/WealthContext';
 
@@ -31,11 +31,16 @@ function AccountSelect({ label, value, onChange, accounts }) {
   );
 }
 
-function InboxRow({ item, accounts }) {
+function InboxRow({ item, accounts, onSettled }) {
   const { reviewInbox } = useWealth();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
-  const [source, setSource] = useState(item.account || '');
+  // A salary goes into the salary account, as the LINE bot assumes too.
+  const salaryAccount =
+    item.type === 'Income' && item.category === 'Salary'
+      ? accounts.find((a) => /เงินเดือน/.test(a.purpose ?? '') || /salary/i.test(a.name))?.name
+      : '';
+  const [source, setSource] = useState(item.account || salaryAccount || '');
   const [destination, setDestination] = useState(item.destinationAccount || '');
 
   const pending = item.status !== 'Confirmed' && item.status !== 'Rejected';
@@ -60,7 +65,17 @@ function InboxRow({ item, accounts }) {
       destinationAccount: destination,
     });
     setBusy('');
-    if (!res.ok) setError(res.error);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    // The row leaves the list at once; the parent says what happened, since
+    // this component is about to unmount.
+    onSettled(
+      action === 'confirm'
+        ? `ยืนยันแล้ว · ฿${item.amount.toLocaleString()}${res.txId ? ` · ${res.txId}` : ''}`
+        : `ทิ้ง ${item.id} แล้ว`
+    );
   };
 
   return (
@@ -103,7 +118,8 @@ function InboxRow({ item, accounts }) {
       {hasAmount && (
         <div className="mt-4 space-y-3">
           <AccountSelect
-            label={twoSided ? 'จากบัญชี' : 'หักจากบัญชี'}
+            // Income arrives in the account rather than leaving it.
+            label={twoSided ? 'จากบัญชี' : item.type === 'Income' ? 'เข้าบัญชี' : 'หักจากบัญชี'}
             value={source}
             onChange={setSource}
             accounts={accounts}
@@ -152,10 +168,6 @@ function InboxRow({ item, accounts }) {
         </p>
       )}
 
-      {item.status === 'Confirmed' && (
-        <p className="text-emerald text-xs mt-2">เข้า 04_TRANSACTIONS แล้ว</p>
-      )}
-
       {error && <p className="text-coral text-xs mt-2">{error}</p>}
     </div>
   );
@@ -167,6 +179,14 @@ function InboxRow({ item, accounts }) {
 function LineMenuButton() {
   const { installLineMenu } = useWealth();
   const [state, setState] = useState({ busy: false, message: '', ok: null });
+
+  // Success is said, then gets out of the way; a failure stays until the
+  // next attempt, because it carries the reason to act on.
+  useEffect(() => {
+    if (!state.ok) return undefined;
+    const t = setTimeout(() => setState((s) => ({ ...s, message: '', ok: null })), 6000);
+    return () => clearTimeout(t);
+  }, [state.ok]);
 
   const run = async () => {
     setState({ busy: true, message: '', ok: null });
@@ -206,22 +226,41 @@ function LineMenuButton() {
 }
 
 export function MoreScreen() {
-  const { data } = useWealth();
-  const inboxItems = data.inbox;
+  const { data, pendingInbox, fetchedAt } = useWealth();
+  const inboxItems = pendingInbox;
+  const [toast, setToast] = useState('');
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const t = setTimeout(() => setToast(''), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
   // Only accounts money can actually sit in or move between.
   const cashAccounts = data.accounts.filter((a) => a.status === 'Active');
 
-  const menuItems = [
-    { icon: Inbox, label: 'Data Inbox', badge: inboxItems.length, color: 'text-cyan' },
+  // Not built yet. Shown as such rather than as buttons: a row that looks
+  // tappable and does nothing reads as the app having frozen. Data Inbox is
+  // not listed — it is the section above.
+  const comingSoon = [
     { icon: PieChart, label: 'PVD', color: 'text-purple' },
     { icon: FileText, label: 'Budget', color: 'text-blue' },
     { icon: AlertCircle, label: 'Tax', color: 'text-warning' },
     { icon: Lock, label: 'Private Assets', color: 'text-text-secondary' },
+    { icon: Settings, label: 'Settings', color: 'text-blue' },
   ];
 
   return (
     <div className="min-h-screen bg-bg-primary pb-24">
       <Header title="More" subtitle="Settings and tools" />
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed left-1/2 -translate-x-1/2 bottom-24 z-50 whitespace-nowrap bg-emerald text-bg-primary text-sm font-semibold px-4 py-2 rounded-full shadow-lg"
+        >
+          ✓ {toast}
+        </div>
+      )}
 
       <div className="px-4 py-4 space-y-6">
         {/* Data Inbox */}
@@ -237,40 +276,11 @@ export function MoreScreen() {
           </h2>
           <div className="space-y-2">
             {inboxItems.map((item) => (
-              <InboxRow key={item.id} item={item} accounts={cashAccounts} />
+              <InboxRow key={item.id} item={item} accounts={cashAccounts} onSettled={setToast} />
             ))}
             {!inboxItems.length && (
               <p className="text-text-tertiary text-sm">ยังไม่มีรายการรอตรวจ</p>
             )}
-          </div>
-        </div>
-
-        {/* Menu Items */}
-        <div>
-          <h2 className="text-white font-bold text-lg mb-3">Tools & Settings</h2>
-          <div className="space-y-2">
-            {menuItems.map((item, index) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={index}
-                  className="w-full bg-bg-card rounded-lg p-4 border border-border-soft hover:border-cyan transition-colors flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon size={24} className={item.color} />
-                    <span className="text-white font-semibold">{item.label}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {item.badge && (
-                      <span className="bg-cyan/20 text-cyan px-2 py-1 rounded text-xs font-bold">
-                        {item.badge}
-                      </span>
-                    )}
-                    <ChevronRight size={20} className="text-text-tertiary" />
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
 
@@ -280,16 +290,20 @@ export function MoreScreen() {
           <LineMenuButton />
         </div>
 
-        {/* Settings */}
+        {/* Not built yet */}
         <div>
-          <h2 className="text-white font-bold text-lg mb-3">Account</h2>
-          <button className="w-full bg-bg-card rounded-lg p-4 border border-border-soft hover:border-cyan transition-colors flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Settings size={24} className="text-blue" />
-              <span className="text-white font-semibold">Settings</span>
-            </div>
-            <ChevronRight size={20} className="text-text-tertiary" />
-          </button>
+          <h2 className="text-white font-bold text-lg mb-3">เร็วๆ นี้</h2>
+          <ul className="bg-bg-card rounded-lg border border-border-soft divide-y divide-border-soft">
+            {comingSoon.map(({ icon: Icon, label, color }) => (
+              <li key={label} className="flex items-center justify-between p-4 opacity-60">
+                <div className="flex items-center gap-3">
+                  <Icon size={20} className={color} />
+                  <span className="text-white text-sm font-semibold">{label}</span>
+                </div>
+                <span className="text-text-tertiary text-xs">ยังไม่เปิดใช้</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* App Info */}
@@ -298,7 +312,9 @@ export function MoreScreen() {
             MY WEALTH v0.1.0 • Personal Wealth Management
           </p>
           <p className="text-text-tertiary text-xs text-center mt-2">
-            Data synced: Today, 17:45
+            {fetchedAt
+              ? `อัปเดตจากชีตล่าสุด ${fetchedAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.`
+              : 'ยังไม่ได้เชื่อมกับชีต'}
           </p>
         </div>
       </div>

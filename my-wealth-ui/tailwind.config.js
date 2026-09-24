@@ -1,5 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // On a phone, :hover sticks to whatever was last tapped, so a button stays
+  // highlighted after the tap is over. Hover styles apply only on devices
+  // that can actually hover.
+  future: { hoverOnlyWhenSupported: true },
   content: [
     "./index.html",
     "./src/**/*.{js,jsx}"
